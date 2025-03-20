@@ -5,14 +5,36 @@ class Canvas2DRenderer {
   constructor(canvas) {
     this.#canvas = canvas;
     this.#ctx = canvas.getContext("2d");
-    console.log("canvas:", canvas);
   }
 
   draw(frame) {
-    console.log("frame:", frame.displayWidth, frame.displayHeight);
-    this.#canvas.width = frame.displayWidth;
-    this.#canvas.height = frame.displayHeight;
-    this.#ctx.drawImage(frame, 0, 0, frame.displayWidth, frame.displayHeight);
+    // this.#canvas.width = frame.displayWidth;
+    // this.#canvas.height = frame.displayHeight;
+
+    // this.#ctx.drawImage(frame, 0, 0, frame.displayWidth, frame.displayHeight);
+
+    const targetWidth = 800; // 원하는 가로 크기
+    const targetHeight =
+      (targetWidth * frame.displayHeight) / frame.displayWidth; // 비율 유지 (450px)
+
+    // 캔버스 크기 설정
+    this.#canvas.width = targetWidth;
+    this.#canvas.height = targetHeight;
+
+    this.#ctx.drawImage(frame, 0, 0, targetWidth, targetHeight);
+
+    // 캡션 추가
+    this.#ctx.font = "24px Arial bold";
+    this.#ctx.fillStyle = "blue";
+    this.#ctx.fillText(frame.caption, 10, 30); // ✅ 변수 사용
+
+    // 캡션 추가
+    this.#ctx.font = "24px Arial";
+    this.#ctx.fillStyle = "white";
+    this.#ctx.fontWeight = "bold";
+
+    this.#ctx.fillText(frame.caption, 680, 30); // ✅ 변수 사용
+
     frame.close();
   }
 }
