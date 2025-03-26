@@ -96,6 +96,8 @@
     <div>
       <button onclick="playVideo()">Play</button>
       <button onclick="pause()">Pause</button>
+      <button onclick="seek(-10)">-10s</button>
+      <button onclick="seek(10)">+10s</button>
       <button onclick="playbackRate(0.5)">x0.5</button>
       <button onclick="playbackRate(1)">x1</button>
       <button onclick="playbackRate(2)">x2</button>
@@ -148,7 +150,7 @@
           document
             .querySelectorAll("input")
             .forEach((input) => (input.disabled = true));
-          startButton.disabled = true;
+          // startButton.disabled = true;
           start();
         },
         { once: true }
@@ -165,6 +167,7 @@
 
       function setStatus(message) {
         for (const key in message.data) {
+          console.log(key, message.data[key]);
           status[key].innerText = message.data[key];
         }
       }
@@ -196,9 +199,22 @@
         worker.postMessage({ type: "pause" });
       }
 
+      function restart() {
+        worker.postMessage({ type: "restart" });
+      }
+
       function playbackRate(rate) {
         console.log("playbackRate", rate);
         worker.postMessage({ type: "playbackRate", rate });
+      }
+
+      function seek(value) {
+        console.log("seek", value);
+        if (value < 0) {
+          worker.postMessage({ type: "seekBackward" });
+        } else {
+          worker.postMessage({ type: "seekForward" });
+        }
       }
     </script>
   </body>

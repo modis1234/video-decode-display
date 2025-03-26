@@ -25,7 +25,9 @@ class Canvas2DRenderer {
 
     // 캡션 추가
     this.#ctx.font = "24px Arial bold";
-    this.#ctx.fillStyle = "blue";
+    this.#ctx.fillStyle = "white";
+    this.#ctx.fontWeight = "bold";
+
     this.#ctx.fillText(frame.caption, 10, 30); // ✅ 변수 사용
 
     // 캡션 추가
@@ -33,7 +35,7 @@ class Canvas2DRenderer {
     this.#ctx.fillStyle = "white";
     this.#ctx.fontWeight = "bold";
 
-    this.#ctx.fillText(frame.caption, 680, 30); // ✅ 변수 사용
+    this.#ctx.fillText(`x${frame.playbackSpeed}`, 750, 30); // ✅ 변수 사용
 
     frame.close();
   }
