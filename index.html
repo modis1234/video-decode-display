@@ -7,17 +7,17 @@
     <p>
       Renderer:
       <label for="renderer_2d">
-        <input
-          id="renderer_2d"
-          type="radio"
-          name="renderer"
-          value="2d"
-          checked
-        />
+        <input id="renderer_2d" type="radio" name="renderer" value="2d" />
         2D
       </label>
       <label for="renderer_webgl">
-        <input id="renderer_webgl" type="radio" name="renderer" value="webgl" />
+        <input
+          id="renderer_webgl"
+          type="radio"
+          name="renderer"
+          value="webgl"
+          checked
+        />
         WebGL
       </label>
       <label for="renderer_webgl2">
@@ -137,9 +137,41 @@
       </tr>
     </table>
 
-    <canvas style="object-fit: contain"></canvas>
+    <input type="file" id="fileInput" />
+    <pre id="output"></pre>
+    <div class="video-container">
+      <canvas style="object-fit: contain" id="video"></canvas>
+      <canvas
+        style="display: none"
+        id="caption"
+        width="1920"
+        height="1080"
+      ></canvas>
+    </div>
 
     <script>
+      const filePaths = [
+        "track/JB00000184_1_tracking.txt",
+        "track/JB00000184_2_tracking.txt",
+        "track/JB00000184_3_tracking.txt",
+        "track/JB00000184_4_tracking.txt",
+        "track/JB00000184_5_tracking.txt",
+        "track/JB00000184_6_tracking.txt",
+        "track/JB00000184_7_tracking.txt",
+        "track/JB00000184_8_tracking.txt",
+        "track/JB00000184_9_tracking.txt",
+        "track/JB00000184_10_tracking.txt",
+      ];
+
+      const fetchFiles = filePaths.map((filePath) =>
+        fetch(filePath)
+          .then((response) => response.text())
+          .catch((error) => {
+            console.error(`파일 ${filePath}을 불러오는 중 오류 발생:`, error);
+            return null; // 오류 발생 시 null 반환
+          })
+      );
+
       const worker = new Worker("./worker.js");
 
       // Play button.
@@ -167,7 +199,6 @@
 
       function setStatus(message) {
         for (const key in message.data) {
-          console.log(key, message.data[key]);
           status[key].innerText = message.data[key];
         }
       }
@@ -178,18 +209,68 @@
           'input[name="video_codec"]:checked'
         ).value;
         // const dataUri = `https://w3c.github.io/webcodecs/samples/data/bbb_video_${videoCodec}_frag.mp4`;
-        const dataUri = `./1_2.mp4`;
+        const dataUri = `./JB00000184.mp4`;
         // const dataUri = `./example.mp4`;
         const rendererName = document.querySelector(
           'input[name="renderer"]:checked'
         ).value;
         const canvas = document
-          .querySelector("canvas")
+          .querySelector("canvas#video")
           .transferControlToOffscreen();
-        worker.addEventListener("message", setStatus);
-        worker.postMessage({ type: "start", dataUri, rendererName, canvas }, [
-          canvas,
-        ]);
+
+        const textCanvas = document
+          .querySelector("canvas#caption")
+          .transferControlToOffscreen();
+
+        console.log("textCanvas", textCanvas);
+        // Fetch the file.
+
+        Promise.all(fetchFiles)
+          .then((filesContent) => {
+            // 모든 파일을 성공적으로 불러왔을 때
+            console.log("filesContent-->", filesContent);
+            worker.addEventListener("message", setStatus);
+            worker.postMessage(
+              {
+                type: "start",
+                dataUri,
+                rendererName,
+                canvas,
+                textCanvas,
+                csvData: filesContent,
+              },
+              [canvas, textCanvas]
+            );
+            // filesContent.forEach((content, index) => {
+            //   if (content !== null) {
+            //     console.log(`파일 ${filePaths[index]} 내용:`, content);
+            //   }
+            // });
+          })
+          .catch((error) => {
+            console.error("파일을 불러오는 중 오류 발생:", error);
+          });
+
+        // fetch("track/JB00000184_1_tracking.txt")
+        //   .then((response) => response.text())
+        //   .then((data) => {
+        //     console.log("파일 내용:", data);
+        //     worker.addEventListener("message", setStatus);
+        //     worker.postMessage(
+        //       {
+        //         type: "start",
+        //         dataUri,
+        //         rendererName,
+        //         canvas,
+        //         textCanvas,
+        //         csvData: data,
+        //       },
+        //       [canvas, textCanvas]
+        //     );
+        //   })
+        //   .catch((error) => {
+        //     console.error("파일을 불러오는 중 오류 발생:", error);
+        //   });
       }
 
       function playVideo() {

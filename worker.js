@@ -33,14 +33,14 @@ let demuxer = null;
 
 let seekTime = 0; // 시간 이동
 
-function start({ dataUri, rendererName, canvas }) {
+function start({ dataUri, rendererName, canvas, textCanvas }) {
   switch (rendererName) {
     case "2d":
       renderer = new Canvas2DRenderer(canvas);
       break;
     case "webgl":
     case "webgl2":
-      renderer = new WebGLRenderer(rendererName, canvas);
+      renderer = new WebGLRenderer(rendererName, canvas, textCanvas);
       break;
     case "webgpu":
       renderer = new WebGPURenderer(canvas);
@@ -61,12 +61,13 @@ function start({ dataUri, rendererName, canvas }) {
         renderer.draw(frame);
         firstFrameRendered = true;
         setStatus("status", "First frame rendered. Click play to continue.");
+        lastFrameTime = frame.timestamp;
       } else {
         const frameTime = frame.timestamp / 1_000_000; // PTS(초 단위 변환)
-        console.log("seekTime->", seekTime);
+        // console.log("seekTime->", seekTime);
         // 🎯 **10초 이전 프레임은 무시하고 바로 해제**
         if (frameTime < seekTime) {
-          console.log(`Skipping frame at ${frameTime}초`);
+          // console.log(`Skipping frame at ${frameTime}초`);
           frame.close(); // 메모리 해제
           return;
         }
@@ -98,6 +99,32 @@ function start({ dataUri, rendererName, canvas }) {
   });
 }
 
+// CSV 데이터를 JSON으로 변환하는 함수
+function parseCSVToJson(csv) {
+  const result = [];
+
+  csv.forEach((csvItem) => {
+    const rows = csvItem.trim().split("\n"); // 각 행을 배열로 분리
+    rows.forEach((row) => {
+      const columns = row.split(","); // 각 열을 쉼표로 분리
+      result.push({
+        frame: parseFloat(columns[0]),
+        timestamp: parseFloat(columns[1]),
+        type: parseInt(columns[2], 10),
+        index: parseInt(columns[3], 10),
+        x1: parseFloat(columns[4]),
+        y1: parseFloat(columns[5]),
+        x2: parseFloat(columns[6]),
+        y2: parseFloat(columns[7]),
+      });
+    });
+  });
+
+  console.log("result-->", result);
+  renderer.setTrackData(result);
+  // return result;
+}
+
 let playbackSpeed = 1; // 기본 1배속
 
 let playTimeOutId = null;
@@ -107,8 +134,7 @@ function playFrames() {
   isPlaying = true;
 
   startTime = performance.now() - lastFrameTime / 1000;
-  console.log("startTime-->", startTime);
-  console.log("pendingChunks-->", pendingChunks);
+
   function renderLoop() {
     if (!isPlaying || pendingChunks.length === 0) {
       isPlaying = false;
@@ -122,7 +148,7 @@ function playFrames() {
     const frameTime = frame.timestamp / 1_000_000; // PTS(초 단위 변환)
 
     const adjustedFrameTime = frameTime / playbackSpeed - 10; // 재생 속도 적용된 시간
-    console.log("adjustedFrameTime-->", adjustedFrameTime);
+    // console.log("adjustedFrameTime-->", adjustedFrameTime);
 
     const delay = Math.max(0, (adjustedFrameTime - elapsed) * 1000); // 밀리초 변환
     // console.log(`PTS: ${parseInt(frame.timestamp / 1_000_000)}초`);
@@ -159,7 +185,6 @@ function setPlaybackSpeed(speed) {
   pauseFrames();
   playbackSpeed = speed;
   playFrames();
-  console.log("speed-->", speed);
 }
 
 // 10초 앞으로 이동
@@ -193,11 +218,12 @@ function seekBackward() {
 
 self.addEventListener("message", (message) => {
   const { type, ...data } = message.data;
-  console.log("type`-->", type);
 
   if (type === "start") {
-    start(data);
-    videoData = data;
+    const { csvData, ...rest } = data;
+    videoData = rest;
+    start(rest);
+    parseCSVToJson(data.csvData);
   } else if (type === "play") playFrames();
   else if (type === "pause") pauseFrames();
   else if (type === "playbackRate") setPlaybackSpeed(data?.rate || 1);
