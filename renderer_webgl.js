@@ -116,7 +116,18 @@ class WebGLRenderer {
         // ctx.clearRect(0, 0, this.#textCanvas.width, this.#textCanvas.height);
 
         // 2. 사각형 그리기 (테두리만)
-        ctx.strokeStyle = "red";
+        let _color = "red";
+        if (item.type === 1) {
+          _color = "blue";
+        } else if (item.type === 2) {
+          _color = "green";
+        } else if (item.type === 3) {
+          _color = "yellow";
+        } else if (item.type === 4) {
+          _color = "purple";
+        }
+
+        ctx.strokeStyle = _color;
         ctx.lineWidth = 2;
 
         ctx.strokeRect(axisX1, axisY1, _width, _height);
