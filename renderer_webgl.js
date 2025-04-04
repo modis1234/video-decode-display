@@ -135,7 +135,7 @@ class WebGLRenderer {
     }
 
     // 3. 텍스트 설정 및 출력
-    const caption = frame.caption || "";
+    const caption = frame.caption || "PTS: 0초";
 
     ctx.font = "30px Arial bold";
     ctx.fillStyle = "red";
@@ -175,18 +175,6 @@ class WebGLRenderer {
       .getContext("2d")
       .clearRect(0, 0, this.#textCanvas.width, this.#textCanvas.height);
 
-    // console.log("frame->", frame);
-
-    const caption = frame.caption || "";
-    // _filterData.forEach((item) => {
-    //   this.#updateTextTexture({
-    //     x1: item.x1,
-    //     y1: item.y1,
-    //     x2: item.x2,
-    //     y2: item.y2,
-    //     text: caption,
-    //   });
-    // });
     this.#updateTextTexture(frame);
 
     // 3. Prepare viewport
@@ -211,6 +199,11 @@ class WebGLRenderer {
 
   setTrackData(trackData) {
     this.#trackData = trackData;
-    // console.log("trackData->", this.#trackData);
+    console.log("trackData->", this.#trackData.length);
+  }
+  clear() {
+    this.#textCanvas
+      .getContext("2d")
+      .clearRect(0, 0, this.#textCanvas.width, this.#textCanvas.height);
   }
 }

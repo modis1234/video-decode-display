@@ -96,6 +96,7 @@
     <div>
       <button onclick="playVideo()">Play</button>
       <button onclick="pause()">Pause</button>
+      <button onclick="reset()">Reset</button>
       <button onclick="seek(-10)">-10s</button>
       <button onclick="seek(10)">+10s</button>
       <button onclick="playbackRate(0.5)">x0.5</button>
@@ -278,8 +279,8 @@
         worker.postMessage({ type: "pause" });
       }
 
-      function restart() {
-        worker.postMessage({ type: "restart" });
+      function reset() {
+        worker.postMessage({ type: "reset" });
       }
 
       function playbackRate(rate) {

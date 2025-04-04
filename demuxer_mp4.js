@@ -38,6 +38,7 @@ class MP4Demuxer {
   #onChunk = null;
   #setStatus = null;
   #file = null;
+  #track = null; // 현재 비디오 트랙 정보를 보관하여 seeking 시 사용
 
   constructor(uri, { onConfig, onChunk, setStatus }) {
     this.#onConfig = onConfig;
@@ -78,6 +79,8 @@ class MP4Demuxer {
     this.#setStatus("demux", "Ready");
     const track = info.videoTracks[0];
 
+    this.#track = track; // 현재 트랙 정보 저장 (seeking에 필요)
+
     // Generate and emit an appropriate VideoDecoderConfig.
     this.#onConfig({
       // Browser doesn't support parsing full vp8 codec (eg: `vp08.00.41.08`),
@@ -105,5 +108,29 @@ class MP4Demuxer {
         })
       );
     }
+  }
+
+  // Seek to a specific time in the MP4 video (in milliseconds).
+  // This flushes existing data, jumps to the nearest keyframe, and resumes demuxing.
+  seek(timeInMs) {
+    if (!this.#track) {
+      this.#setStatus?.("status", "Seek called before track is ready.");
+      return;
+    }
+    this.#setStatus?.("status", `Seeking to ${timeInMs}ms`);
+
+    console.log("seeking to", timeInMs);
+
+    // Reset previous state.
+    this.#file.flush();
+
+    // Reconfigure sample extraction.
+    this.#file.setExtractionOptions(this.#track.id);
+
+    // Perform seek. `true` ensures seek aligns with a sync sample (keyframe).
+    this.#file.seek(timeInMs, true);
+
+    // Resume extraction after seek.
+    this.#file.start();
   }
 }

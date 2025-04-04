@@ -24,14 +24,53 @@ let firstFrameRendered = false;
 let isPlaying = false;
 let pendingChunks = [];
 let decoder = null;
+let lastKnownConfig = null;
+
 let frameCount = 0; // 프레임 카운트
 let lastFrameTime = 0; // 마지막 프레임 시간
 let startTime = null;
 let timeoutId = null; // 타임아웃 ID
 let videoData = null; // 비디오 데이터
 let demuxer = null;
+let dataUri = null;
+
+let currentTimeStamp = 0; // 현재 시간 PTS
+let lastFrameTimeStamp = 0; // 마지막 프레임 시간 PTS
 
 let seekTime = 0; // 시간 이동
+
+// Decoder 초기화
+function createDecoder() {
+  if (decoder && decoder.state !== "closed") {
+    decoder.close();
+  }
+
+  decoder = new VideoDecoder({
+    output(frame) {
+      // 디코딩된 프레임을 처리하고 FPS를 업데이트
+      if (startTime == null) {
+        startTime = performance.now(); // 첫 번째 프레임의 시간 기록
+      } else {
+        const elapsed = (performance.now() - startTime) / 1000; // 경과 시간 (초)
+        const fps = ++frameCount / elapsed; // FPS 계산
+        setStatus("render", `${fps.toFixed(0)} fps`); // FPS 상태 업데이트
+      }
+      if (!firstFrameRendered) {
+        frame.caption = `PTS: ${parseInt(frame.timestamp / 1_000_000)}초`;
+
+        renderer.draw(frame);
+        lastFrameTime = frame.timestamp;
+        firstFrameRendered = true;
+        setStatus("status", "First frame rendered. Click play to continue.");
+      } else {
+        pendingChunks.push(frame);
+      }
+    },
+    error(e) {
+      setStatus("decode", e);
+    },
+  });
+}
 
 function start({ dataUri, rendererName, canvas, textCanvas }) {
   switch (rendererName) {
@@ -47,38 +86,10 @@ function start({ dataUri, rendererName, canvas, textCanvas }) {
       break;
   }
 
-  decoder = new VideoDecoder({
-    output(frame) {
-      // 디코딩된 프레임을 처리하고 FPS를 업데이트
-      if (startTime == null) {
-        startTime = performance.now(); // 첫 번째 프레임의 시간 기록
-      } else {
-        const elapsed = (performance.now() - startTime) / 1000; // 경과 시간 (초)
-        const fps = ++frameCount / elapsed; // FPS 계산
-        setStatus("render", `${fps.toFixed(0)} fps`); // FPS 상태 업데이트
-      }
-      if (!firstFrameRendered) {
-        renderer.draw(frame);
-        firstFrameRendered = true;
-        setStatus("status", "First frame rendered. Click play to continue.");
-        lastFrameTime = frame.timestamp;
-      } else {
-        const frameTime = frame.timestamp / 1_000_000; // PTS(초 단위 변환)
-        // console.log("seekTime->", seekTime);
-        // 🎯 **10초 이전 프레임은 무시하고 바로 해제**
-        if (frameTime < seekTime) {
-          // console.log(`Skipping frame at ${frameTime}초`);
-          frame.close(); // 메모리 해제
-          return;
-        }
+  dataUri = dataUri;
 
-        pendingChunks.push(frame);
-      }
-    },
-    error(e) {
-      setStatus("decode", e);
-    },
-  });
+  // ✅ 비디오 디코더 생성
+  createDecoder(); // 디코더 생성
 
   demuxer = new MP4Demuxer(dataUri, {
     onConfig(config) {
@@ -86,9 +97,13 @@ function start({ dataUri, rendererName, canvas, textCanvas }) {
         "decode",
         `${config.codec} @ ${config.codedWidth}x${config.codedHeight}`
       );
+      lastKnownConfig = config; // 🔹 저장
       decoder.configure(config);
     },
     onChunk(chunk) {
+      const frameTime = chunk.timestamp / 1_000_000; // PTS(초 단위 변환)
+      lastFrameTimeStamp = frameTime; // 마지막 프레임 시간 저장
+      console.log("lastFrameTimeStamp-->", lastFrameTimeStamp);
       if (!firstFrameRendered) {
         decoder.decode(chunk);
       } else {
@@ -120,8 +135,8 @@ function parseCSVToJson(csv) {
     });
   });
 
-  console.log("result-->", result);
-  renderer.setTrackData(result);
+  // console.log("result-->", result);
+  renderer.setTrackData(result); // 트랙 데이터 설정
   // return result;
 }
 
@@ -140,20 +155,13 @@ function playFrames() {
       isPlaying = false;
       return;
     }
-
     const frame = pendingChunks.shift();
-
     const now = performance.now();
-    const elapsed = (now - startTime) / 1000; // 초 단위 변환
-    const frameTime = frame.timestamp / 1_000_000; // PTS(초 단위 변환)
+    const elapsed = (now - startTime) / 1000; // 초 단위로 변환
+    const frameTime = frame.timestamp / 1_000_000; // PTX(초 단위 변환)
+    const adjustedFrameTime = frameTime / playbackSpeed; // 재생 속도 적용된 시간
 
-    const adjustedFrameTime = frameTime / playbackSpeed - 10; // 재생 속도 적용된 시간
-    // console.log("adjustedFrameTime-->", adjustedFrameTime);
-
-    const delay = Math.max(0, (adjustedFrameTime - elapsed) * 1000); // 밀리초 변환
-    // console.log(`PTS: ${parseInt(frame.timestamp / 1_000_000)}초`);
-    console.log("delay-->", delay);
-
+    let delay = Math.max(16, (adjustedFrameTime - elapsed) * 1000); // 밀리초 변환- 최소 16ms 보장
     frame.caption = `PTS: ${parseInt(frame.timestamp / 1_000_000)}초`;
     frame.playbackSpeed = playbackSpeed;
     renderer.draw(frame);
@@ -162,12 +170,11 @@ function playFrames() {
     timeoutId = setTimeout(() => {
       requestAnimationFrame(renderLoop);
       lastFrameTime = frame.timestamp;
+      currentTimeStamp = frameTime; // 현재 시간 저장
     }, delay);
-
-    // requestAnimationFrame(renderLoop);
   }
 
-  renderLoop();
+  setTimeout(renderLoop, 100); // 초기 실행 지연 (100ms)
 }
 
 function pauseFrames() {
@@ -176,9 +183,6 @@ function pauseFrames() {
     clearTimeout(timeoutId);
     timeoutId = null;
   }
-
-  // pendingChunks.forEach((frame) => frame.close());
-  // pendingChunks = [];
 }
 
 function setPlaybackSpeed(speed) {
@@ -187,38 +191,36 @@ function setPlaybackSpeed(speed) {
   playFrames();
 }
 
-// 10초 앞으로 이동
-function seekForward(timeInSeconds) {
-  if (isPlaying) {
-    pauseFrames();
+// seekTime을 설정하는 함수
+function seekTo(timeInMs) {
+  if (decoder) {
+    decoder.close();
   }
 
-  // 새로운 프레임 시간 설정
-  seekTime = timeInSeconds;
+  // 1. 디코더 재생성
+  createDecoder();
+  // 2. 디코더 구성
+  decoder.configure(lastKnownConfig); // 저장해둔 VideoDecoderConfig 사용
+  // 3. 상태 초기화
+  pendingChunks = [];
+  firstFrameRendered = false;
 
-  // decoder를 리셋하고, 새로운 시작점을 설정
-  decoder.reset(); // 이전 상태를 리셋
-  pendingChunks = []; // 기존 청크 데이터 초기화
+  const clampedTime = Math.max(
+    0,
+    Math.min(lastFrameTimeStamp, currentTimeStamp + timeInMs)
+  ); // 0과 lastFrameTimeStamp 사이의 값으로 클램핑
 
-  // Seek에 해당하는 위치부터 디코딩 시작
-  // setStatus("status", `Seeking to ${seekTime}s...`);
-  // demuxer.seek(timeInSeconds); // Demuxer에 seek 요청
-}
+  currentTimeStamp = timeInMs === 0 ? 0 : clampedTime; // 밀리초 단위로 변환
 
-// 10초 뒤로 이동
-function seekBackward() {
-  if (isPlaying) {
-    pauseFrames();
-  }
-  const newTime = Math.max(0, lastFrameTime / 1000 - 10); // 10초 뒤로 이동, 0초 미만으로 가지 않도록 처리
-  startTime = performance.now() - newTime * 1000; // 새로운 위치에 맞게 startTime 업데이트
-  setStatus("status", "10초 뒤로 이동 중...");
-  playFrames(); // 새로운 위치에서 재생 시작
+  // 4. 시킹
+  demuxer.seek(currentTimeStamp); // 마이크로초 단위로 변환
+  lastFrameTimeStamp;
+  console.log("isPlaying->", isPlaying);
 }
 
 self.addEventListener("message", (message) => {
   const { type, ...data } = message.data;
-
+  console.log("type->", type);
   if (type === "start") {
     const { csvData, ...rest } = data;
     videoData = rest;
@@ -227,6 +229,7 @@ self.addEventListener("message", (message) => {
   } else if (type === "play") playFrames();
   else if (type === "pause") pauseFrames();
   else if (type === "playbackRate") setPlaybackSpeed(data?.rate || 1);
-  else if (type === "seekForward") seekForward(10); // 10초 앞으로 이동
-  else if (type === "seekBackward") seekBackward(); // 10초 뒤로 이동
+  else if (type === "seekForward") seekTo(10); // 10초 앞으로 이동
+  else if (type === "seekBackward") seekTo(-10); // 10초 뒤로 이동
+  else if (type === "reset") seekTo(0); // WebCodecs 리셋
 });
