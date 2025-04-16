@@ -72,14 +72,19 @@ function createDecoder() {
   });
 }
 
-function start({ dataUri, rendererName, canvas, textCanvas }) {
+function start({ dataUri, rendererName, canvas, textCanvas, mosaicCanvas }) {
   switch (rendererName) {
     case "2d":
       renderer = new Canvas2DRenderer(canvas);
       break;
     case "webgl":
     case "webgl2":
-      renderer = new WebGLRenderer(rendererName, canvas, textCanvas);
+      renderer = new WebGLRenderer(
+        rendererName,
+        canvas,
+        textCanvas,
+        mosaicCanvas
+      );
       break;
     case "webgpu":
       renderer = new WebGPURenderer(canvas);

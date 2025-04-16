@@ -1,3 +1,7 @@
 {
+  "scripts": {
+    "https": "npx http-server -S -C cert.pem -K key.pem -p 8080",
+    "http": "http-server"
+  },
   "dependencies": {}
 }

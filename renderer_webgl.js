@@ -5,33 +5,29 @@ class WebGLRenderer {
   #textCanvas = null;
   #textTexture = null;
   #trackData = null;
+  #mosaicCanvas = null; // ◆️ (1) Mosaic preprocessing canvas
 
   static vertexShaderSource = `
     attribute vec2 xy;
-
     varying highp vec2 uv;
-
     void main(void) {
       gl_Position = vec4(xy, 0.0, 1.0);
-      // Map vertex coordinates (-1 to +1) to UV coordinates (0 to 1).
-      // UV coordinates are Y-flipped relative to vertex coordinates.
       uv = vec2((1.0 + xy.x) / 2.0, (1.0 - xy.y) / 2.0);
     }
   `;
 
   static fragmentShaderSource = `
     varying highp vec2 uv;
-
     uniform sampler2D texture;
-
     void main(void) {
       gl_FragColor = texture2D(texture, uv);
     }
   `;
 
-  constructor(type, canvas, textCanvas) {
+  constructor(type, canvas, textCanvas, mosaicCanvas) {
     this.#canvas = canvas;
     this.#textCanvas = textCanvas;
+    this.#mosaicCanvas = mosaicCanvas; // ◆️ (2) For pre-drawing with mosaic
     const gl = (this.#ctx = canvas.getContext(type));
 
     const vertexShader = gl.createShader(gl.VERTEX_SHADER);
@@ -85,6 +81,24 @@ class WebGLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   }
 
+  // ◆️ Mosaic 처리 함수 (Canvas 2D)
+  #applyMosaic(ctx, x, y, width, height, pixelSize) {
+    const mosaicW = Math.max(1, Math.floor(width / pixelSize));
+    const mosaicH = Math.max(1, Math.floor(height / pixelSize));
+
+    const tempCanvas = new OffscreenCanvas(mosaicW, mosaicH);
+    const tempCtx = tempCanvas.getContext("2d");
+
+    // 1. 축소 (저해상도 캔버스에 draw)
+    tempCtx.imageSmoothingEnabled = false;
+    tempCtx.drawImage(ctx.canvas, x, y, width, height, 0, 0, mosaicW, mosaicH);
+
+    // 2. 확대 (mosaic처럼 보이도록 다시 원래 ctx에 draw)
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(x, y, width, height);
+    ctx.drawImage(tempCanvas, 0, 0, mosaicW, mosaicH, x, y, width, height);
+  }
+
   #updateTextTexture(frame) {
     const gl = this.#ctx;
     const ctx = this.#textCanvas.getContext("2d");
@@ -94,56 +108,33 @@ class WebGLRenderer {
         (item) => item.timestamp === frame.timestamp / 1_000_000
       ) || [];
 
-    // ref: 0.7817708333333333,0.7462962962962963,0.8083333333333333,0.7944444444444444
-    // x1: 0.7817708333333333, y1: 0.7462962962962963
-    // x2: 0.8083333333333333, y2: 0.7944444444444444
-
     if (_filterData.length !== 0) {
-      // return;
-
       _filterData.forEach((item) => {
         const axisX1 = this.#textCanvas.width * item.x1;
         const axisY1 = this.#textCanvas.height * item.y1;
         const axisX2 = this.#textCanvas.width * item.x2;
         const axisY2 = this.#textCanvas.height * item.y2;
-
         const _width = axisX2 - axisX1;
         const _height = axisY2 - axisY1;
-
-        // 1. 캔버스 초기화
-        // ctx.clearRect(0, 0, w, h);
-        // ctx.clearRect(0, 0, this.#textCanvas.width, this.#textCanvas.height);
-        // ctx.clearRect(0, 0, this.#textCanvas.width, this.#textCanvas.height);
-
-        // 2. 사각형 그리기 (테두리만)
+        ctx.fillStyle = "rgba(255, 0, 0, 0.3)"; // 배경 색 (반투명 빨강)
+        ctx.fillRect(axisX1, axisY1, _width, _height); // 배경 색 채우기
         let _color = "red";
-        if (item.type === 1) {
-          _color = "blue";
-        } else if (item.type === 2) {
-          _color = "green";
-        } else if (item.type === 3) {
-          _color = "yellow";
-        } else if (item.type === 4) {
-          _color = "purple";
-        }
+        if (item.type === 1) _color = "blue";
+        else if (item.type === 2) _color = "green";
+        else if (item.type === 3) _color = "yellow";
+        else if (item.type === 4) _color = "purple";
 
         ctx.strokeStyle = _color;
         ctx.lineWidth = 2;
-
         ctx.strokeRect(axisX1, axisY1, _width, _height);
       });
     }
 
-    // 3. 텍스트 설정 및 출력
     const caption = frame.caption || "PTS: 0초";
-
     ctx.font = "30px Arial bold";
     ctx.fillStyle = "red";
-    ctx.border = "1px solid red";
-    // ctx.textBaseline = "top";
     ctx.fillText(caption, 5, 25);
 
-    // 4. WebGL 텍스처에 업로드
     gl.bindTexture(gl.TEXTURE_2D, this.#textTexture);
     gl.texImage2D(
       gl.TEXTURE_2D,
@@ -156,37 +147,70 @@ class WebGLRenderer {
   }
 
   draw(frame) {
+    // ▲ drawImage 전에 frame 유효성 검사
+    if (!frame || frame.displayWidth === 0 || frame.displayHeight === 0) {
+      console.warn("Invalid frame, skipping draw.");
+      return;
+    }
+
+    const width = frame.displayWidth;
+    const height = frame.displayHeight;
+
+    this.#canvas.width = width;
+    this.#canvas.height = height;
+    this.#mosaicCanvas.width = width;
+    this.#mosaicCanvas.height = height;
+
+    const preCtx = this.#mosaicCanvas.getContext("2d");
+
+    // ① draw video frame to preprocessing canvas
+    preCtx.drawImage(frame, 0, 0, width, height);
+
+    // ② apply mosaic to each tracked region
+    const _filterData =
+      this.#trackData?.filter(
+        (item) => item.timestamp === frame.timestamp / 1_000_000
+      ) || [];
+
+    _filterData.forEach((item) => {
+      const x1 = width * item.x1;
+      const y1 = height * item.y1;
+      const x2 = width * item.x2;
+      const y2 = height * item.y2;
+      const w = x2 - x1;
+      const h = y2 - y1;
+      this.#applyMosaic(preCtx, x1, y1, w, h, 10); // ◆️ pixelSize = 10
+    });
+
     const gl = this.#ctx;
 
-    // this.#canvas.width = 800;
-    // this.#canvas.height = 500;
-
-    this.#canvas.width = frame.displayWidth;
-    this.#canvas.height = frame.displayHeight;
-
-    // 1. Upload video frame to main texture
+    // ③ upload processed canvas to WebGL texture
     gl.bindTexture(gl.TEXTURE_2D, this.#mainTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      this.#mosaicCanvas
+    );
     frame.close();
 
-    // 2. Upload text to text texture
-
+    // ④ text overlay
     this.#textCanvas
       .getContext("2d")
       .clearRect(0, 0, this.#textCanvas.width, this.#textCanvas.height);
-
     this.#updateTextTexture(frame);
 
-    // 3. Prepare viewport
+    // ⑤ render
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     // 4. Draw video frame
-    gl.bindTexture(gl.TEXTURE_2D, this.#mainTexture); // ⬅️ 프레임 텍스처로 다시 바인딩
+    gl.bindTexture(gl.TEXTURE_2D, this.#mainTexture);
     gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 
-    // 5. Enable blending and draw text
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 

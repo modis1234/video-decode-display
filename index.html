@@ -20,7 +20,7 @@
         />
         WebGL
       </label>
-      <label for="renderer_webgl2">
+      <!-- <label for="renderer_webgl2">
         <input
           id="renderer_webgl2"
           type="radio"
@@ -37,7 +37,7 @@
           value="webgpu"
         />
         WebGPU
-      </label>
+      </label> -->
     </p>
 
     <p>
@@ -52,7 +52,7 @@
         />
         H.264
       </label>
-      <label for="video_codec_h265">
+      <!-- <label for="video_codec_h265">
         <input
           id="video_codec_h265"
           type="radio"
@@ -87,7 +87,7 @@
           value="av1"
         />
         AV1
-      </label>
+      </label> -->
     </p>
 
     <p>
@@ -99,12 +99,12 @@
       <button onclick="reset()">Reset</button>
       <button onclick="seek(-10)">-10s</button>
       <button onclick="seek(10)">+10s</button>
-      <button onclick="playbackRate(0.5)">x0.5</button>
-      <button onclick="playbackRate(1)">x1</button>
-      <button onclick="playbackRate(2)">x2</button>
-      <button onclick="playbackRate(4)">x4</button>
-      <button onclick="playbackRate(8)">x8</button>
-      <button onclick="playbackRate(16)">x16</button>
+      <button disabled onclick="playbackRate(0.5)">x0.5</button>
+      <button disabled onclick="playbackRate(1)">x1</button>
+      <button disabled onclick="playbackRate(2)">x2</button>
+      <button disabled onclick="playbackRate(4)">x4</button>
+      <button disabled onclick="playbackRate(8)">x8</button>
+      <button disabled onclick="playbackRate(16)">x16</button>
       <input
         type="range"
         id="seekBar"
@@ -113,6 +113,7 @@
         value="0"
         step="1"
         onchange="seek(this.value)"
+        disabled
       />
     </div>
     <table cellspacing="8" id="status_table">
@@ -146,6 +147,7 @@
         width="1920"
         height="1080"
       ></canvas>
+      <canvas id="mosaic" style="display: none"></canvas>
     </div>
 
     <script>
@@ -208,8 +210,9 @@
           'input[name="video_codec"]:checked'
         ).value;
         // const dataUri = `https://w3c.github.io/webcodecs/samples/data/bbb_video_${videoCodec}_frag.mp4`;
-        const dataUri = `./JB00000184.mp4`;
-        // const dataUri = `./example.mp4`;
+        // const dataUri = `./JB00000184.mp4`;
+        const dataUri = `http://127.0.0.1:3000/video`;
+
         const rendererName = document.querySelector(
           'input[name="renderer"]:checked'
         ).value;
@@ -219,6 +222,10 @@
 
         const textCanvas = document
           .querySelector("canvas#caption")
+          .transferControlToOffscreen();
+
+        const mosaicCanvas = document
+          .querySelector("canvas#mosaic")
           .transferControlToOffscreen();
 
         console.log("textCanvas", textCanvas);
@@ -236,9 +243,10 @@
                 rendererName,
                 canvas,
                 textCanvas,
+                mosaicCanvas,
                 csvData: filesContent,
               },
-              [canvas, textCanvas]
+              [canvas, textCanvas, mosaicCanvas]
             );
             // filesContent.forEach((content, index) => {
             //   if (content !== null) {
