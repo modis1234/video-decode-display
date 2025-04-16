@@ -108,7 +108,6 @@ function start({ dataUri, rendererName, canvas, textCanvas, mosaicCanvas }) {
     onChunk(chunk) {
       const frameTime = chunk.timestamp / 1_000_000; // PTS(초 단위 변환)
       lastFrameTimeStamp = frameTime; // 마지막 프레임 시간 저장
-      console.log("lastFrameTimeStamp-->", lastFrameTimeStamp);
       if (!firstFrameRendered) {
         decoder.decode(chunk);
       } else {
@@ -219,13 +218,25 @@ function seekTo(timeInMs) {
 
   // 4. 시킹
   demuxer.seek(currentTimeStamp); // 마이크로초 단위로 변환
-  lastFrameTimeStamp;
   console.log("isPlaying->", isPlaying);
+}
+
+function rectClickAction(x, y) {
+  if (isPlaying) {
+    renderer.handleClick(x, y);
+  } else {
+    renderer.handlePauseClick(x, y); // pause 상태 클릭 이벤트 처리
+  }
+}
+
+function rectMouseHoverAction(x, y) {
+  const _isMouseArea = renderer?.handleHover(x, y) || false; // hover 상태 클릭 이벤트 처리
+  setStatus("hover", _isMouseArea); // hover 상태 업데이트
 }
 
 self.addEventListener("message", (message) => {
   const { type, ...data } = message.data;
-  console.log("type->", type);
+  // console.log("type->", type);
   if (type === "start") {
     const { csvData, ...rest } = data;
     videoData = rest;
@@ -237,4 +248,8 @@ self.addEventListener("message", (message) => {
   else if (type === "seekForward") seekTo(10); // 10초 앞으로 이동
   else if (type === "seekBackward") seekTo(-10); // 10초 뒤로 이동
   else if (type === "reset") seekTo(0); // WebCodecs 리셋
+  else if (type === "rectClick")
+    rectClickAction(data?.clickX, data?.clickY); // 클릭 이벤트 처리
+  else if (type === "rectMouseHover")
+    rectMouseHoverAction(data?.mouseX, data?.mouseY); // 마우스 호버 이벤트 처리
 });

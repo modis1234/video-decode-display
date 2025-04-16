@@ -6,6 +6,9 @@ class WebGLRenderer {
   #textTexture = null;
   #trackData = null;
   #mosaicCanvas = null; // ◆️ (1) Mosaic preprocessing canvas
+  #selectedItem = null; // 선택된 객체를 저장하는 변수
+  #selectedItemIndexs = []; // 선택된 객체의 인덱스를 저장하는 배열
+  #lastFrame = 0; // ◆️ 마지막 프레임 저장
 
   static vertexShaderSource = `
     attribute vec2 xy;
@@ -29,6 +32,29 @@ class WebGLRenderer {
     this.#textCanvas = textCanvas;
     this.#mosaicCanvas = mosaicCanvas; // ◆️ (2) For pre-drawing with mosaic
     const gl = (this.#ctx = canvas.getContext(type));
+
+    // ▲ 마우스 hover → 모자이크 사각형 내 커서 변경
+    this.#textCanvas.addEventListener("mousemove", (e) => {
+      if (!this.#trackData) return;
+      const rect = this.#canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const width = this.#canvas.width;
+      const height = this.#canvas.height;
+
+      const isHovering = this.#trackData.some((item) => {
+        const x1 = item.x1 * width;
+        const y1 = item.y1 * height;
+        const x2 = item.x2 * width;
+        const y2 = item.y2 * height;
+        return mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2;
+      });
+
+      this.#textCanvas.style.cursor = isHovering ? "pointer" : "default";
+    });
+    console.log("this.#textCanvas->", this.#textCanvas);
+
+    // ▼ Shader compile setup
 
     const vertexShader = gl.createShader(gl.VERTEX_SHADER);
     gl.shaderSource(vertexShader, WebGLRenderer.vertexShaderSource);
@@ -116,17 +142,47 @@ class WebGLRenderer {
         const axisY2 = this.#textCanvas.height * item.y2;
         const _width = axisX2 - axisX1;
         const _height = axisY2 - axisY1;
-        ctx.fillStyle = "rgba(255, 0, 0, 0.3)"; // 배경 색 (반투명 빨강)
-        ctx.fillRect(axisX1, axisY1, _width, _height); // 배경 색 채우기
-        let _color = "red";
-        if (item.type === 1) _color = "blue";
-        else if (item.type === 2) _color = "green";
-        else if (item.type === 3) _color = "yellow";
-        else if (item.type === 4) _color = "purple";
+        // ctx.fillStyle = "rgba(255, 0, 0, 0.3)"; // 배경 색 (반투명 빨강)
+        // ctx.fillRect(axisX1, axisY1, _width, _height); // 배경 색 채우기
+        let _color = "black"; // 기본 색상
+        let _text = "Unknown";
+        if (item.type === 1) {
+          _color = "blue";
+          // _text = "Person";
+        } else if (item.type === 2) {
+          _color = "green";
+          _text = "person";
+        } else if (item.type === 3) {
+          _color = "yellow";
+          _text = "car";
+        } else if (item.type === 4) {
+          _color = "purple";
+        } else if (item.type === 0) {
+          _color = "red";
+          _text = "";
+        }
 
-        ctx.strokeStyle = _color;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(axisX1, axisY1, _width, _height);
+        ctx.font = "20px Arial bold";
+        ctx.fillStyle = _color;
+        ctx.fillText(_text, axisX1, axisY1 - 5);
+
+        const _hasSelectedIndex =
+          this.#selectedItemIndexs?.length !== 0 &&
+          this.#selectedItemIndexs.includes(item?.index);
+
+        // ◆️ 선택된 항목 점선 표시
+        if (_hasSelectedIndex) {
+          // console.log("Selected item:", item);
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = _color;
+          ctx.lineWidth = 3;
+          ctx.strokeRect(axisX1, axisY1, _width, _height);
+          ctx.setLineDash([]);
+        } else {
+          ctx.strokeStyle = _color;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(axisX1, axisY1, _width, _height);
+        }
       });
     }
 
@@ -152,6 +208,8 @@ class WebGLRenderer {
       console.warn("Invalid frame, skipping draw.");
       return;
     }
+
+    this.#lastFrame = frame; // ◆️ 마지막 프레임 저장
 
     const width = frame.displayWidth;
     const height = frame.displayHeight;
@@ -229,5 +287,136 @@ class WebGLRenderer {
     this.#textCanvas
       .getContext("2d")
       .clearRect(0, 0, this.#textCanvas.width, this.#textCanvas.height);
+  }
+  redrawSelectedBox(x, y) {
+    if (!this.#lastFrame || !this.#trackData) return;
+
+    // Clear the text canvas before redrawing
+    this.#textCanvas
+      .getContext("2d")
+      .clearRect(0, 0, this.#textCanvas.width, this.#textCanvas.height);
+
+    const width = this.#canvas.width;
+    const height = this.#canvas.height;
+    const target = this.#trackData.find((item) => {
+      const x1 = item.x1 * width;
+      const y1 = item.y1 * height;
+      const x2 = item.x2 * width;
+      const y2 = item.y2 * height;
+      return x >= x1 && x <= x2 && y >= y1 && y <= y2;
+    });
+
+    this.#selectedItem = target || null;
+
+    const _hasSelectedIndex = this.#selectedItemIndexs.includes(target?.index);
+    if (_hasSelectedIndex) {
+      this.#selectedItemIndexs = this.#selectedItemIndexs.filter(
+        (index) => index !== target?.index
+      );
+    } else {
+      this.#selectedItemIndexs.push(target?.index);
+    }
+
+    this.#updateTextTexture(this.#lastFrame);
+
+    const gl = this.#ctx;
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.bindTexture(gl.TEXTURE_2D, this.#mainTexture);
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindTexture(gl.TEXTURE_2D, this.#textTexture);
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+    gl.disable(gl.BLEND);
+  }
+
+  handleClick(x, y) {
+    if (!this.#trackData) return;
+    const width = this.#canvas.width;
+    const height = this.#canvas.height;
+    const target = this.#trackData.find((item) => {
+      const x1 = item.x1 * width;
+      const y1 = item.y1 * height;
+      const x2 = item.x2 * width;
+      const y2 = item.y2 * height;
+
+      const _lastFrameTimestamp = this.#lastFrame.timestamp / 1_000_000 || 0;
+
+      const _itemTimestamp = item.timestamp || 0;
+      return (
+        _lastFrameTimestamp === _itemTimestamp &&
+        x >= x1 &&
+        x <= x2 &&
+        y >= y1 &&
+        y <= y2
+      );
+    });
+    // console.log("target-->", target);
+    this.#selectedItem = target || null;
+    const _hasSelectedIndex = this.#selectedItemIndexs.includes(target?.index);
+    if (_hasSelectedIndex) {
+      this.#selectedItemIndexs = this.#selectedItemIndexs.filter(
+        (index) => index !== target?.index
+      );
+    } else {
+      this.#selectedItemIndexs.push(target?.index);
+    }
+  }
+  handlePauseClick(x, y) {
+    if (!this.#trackData) return;
+    const width = this.#canvas.width;
+    const height = this.#canvas.height;
+    const target = this.#trackData.find((item) => {
+      const x1 = item.x1 * width;
+      const y1 = item.y1 * height;
+      const x2 = item.x2 * width;
+      const y2 = item.y2 * height;
+
+      const _lastFrameTimestamp = this.#lastFrame.timestamp / 1_000_000 || 0;
+
+      const _itemTimestamp = item.timestamp || 0;
+
+      return (
+        _lastFrameTimestamp === _itemTimestamp &&
+        x >= x1 &&
+        x <= x2 &&
+        y >= y1 &&
+        y <= y2
+      );
+    });
+
+    this.#selectedItem = target || null;
+    const _hasSelectedIndex = this.#selectedItemIndexs.includes(target?.index);
+    if (_hasSelectedIndex) {
+      this.#selectedItemIndexs = this.#selectedItemIndexs.filter(
+        (index) => index !== target?.index
+      );
+    } else {
+      this.#selectedItemIndexs.push(target?.index);
+    }
+    this.redrawSelectedBox(); // ◆️ 정지 상태에서도 점선 박스 갱신
+  }
+  handleHover(x, y) {
+    if (!this.#trackData) return false;
+    const width = this.#textCanvas.width;
+    const height = this.#textCanvas.height;
+    return this.#trackData.some((item) => {
+      const x1 = item.x1 * width;
+      const y1 = item.y1 * height;
+      const x2 = item.x2 * width;
+      const y2 = item.y2 * height;
+
+      const _lastFrameTimestamp = this.#lastFrame.timestamp / 1_000_000 || 0;
+
+      const _itemTimestamp = item.timestamp || 0;
+
+      return (
+        _lastFrameTimestamp === _itemTimestamp &&
+        x >= x1 &&
+        x <= x2 &&
+        y >= y1 &&
+        y <= y2
+      );
+    });
   }
 }

@@ -139,15 +139,18 @@
       </tr>
     </table>
 
-    <div class="video-container">
+    <div class="video-container" style="position: relative">
       <canvas style="object-fit: contain" id="video"></canvas>
       <canvas
-        style="display: none"
+        style="display: block; position: absolute; top: 0; left: 0"
         id="caption"
         width="1920"
         height="1080"
       ></canvas>
-      <canvas id="mosaic" style="display: none"></canvas>
+      <canvas
+        id="mosaic"
+        style="display: none; position: absolute; top: 0; left: 0"
+      ></canvas>
     </div>
 
     <script>
@@ -189,6 +192,27 @@
         { once: true }
       );
 
+      // Mosaic canvas Event
+      const captionCanvas = document.querySelector("#caption");
+
+      captionCanvas.addEventListener("click", (e) => {
+        const rect = e.target.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        console.log("clickX", clickX, "clickY", clickY);
+        // renderer.handleClick(clickX, clickY);
+        worker.postMessage({ type: "rectClick", clickX, clickY });
+      });
+
+      captionCanvas.addEventListener("mousemove", (e) => {
+        const rect = captionCanvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        // console.log("mouseX", mouseX, "mouseY", mouseY);
+        // console.log
+        worker.postMessage({ type: "rectMouseHover", mouseX, mouseY });
+      });
+
       // Status UI.
       const status = {
         fetch: document.querySelector("#fetch"),
@@ -196,11 +220,20 @@
         decode: document.querySelector("#decode"),
         render: document.querySelector("#render"),
         status: document.querySelector("#status"),
+        // hover: document.querySelector("#hover"),
       };
 
       function setStatus(message) {
         for (const key in message.data) {
-          status[key].innerText = message.data[key];
+          if (key === "hover") {
+            if (message.data[key]) {
+              captionCanvas.style.cursor = "pointer";
+            } else {
+              captionCanvas.style.cursor = "default";
+            }
+          } else {
+            status[key].innerText = message.data[key];
+          }
         }
       }
 
