@@ -33,25 +33,6 @@ class WebGLRenderer {
     this.#mosaicCanvas = mosaicCanvas; // ◆️ (2) For pre-drawing with mosaic
     const gl = (this.#ctx = canvas.getContext(type));
 
-    // ▲ 마우스 hover → 모자이크 사각형 내 커서 변경
-    this.#textCanvas.addEventListener("mousemove", (e) => {
-      if (!this.#trackData) return;
-      const rect = this.#canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-      const width = this.#canvas.width;
-      const height = this.#canvas.height;
-
-      const isHovering = this.#trackData.some((item) => {
-        const x1 = item.x1 * width;
-        const y1 = item.y1 * height;
-        const x2 = item.x2 * width;
-        const y2 = item.y2 * height;
-        return mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2;
-      });
-
-      this.#textCanvas.style.cursor = isHovering ? "pointer" : "default";
-    });
     console.log("this.#textCanvas->", this.#textCanvas);
 
     // ▼ Shader compile setup
