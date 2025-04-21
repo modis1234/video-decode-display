@@ -115,6 +115,7 @@
         onchange="seek(this.value)"
         disabled
       />
+      <button onclick="zoneSetting()">영역 설정</button>
     </div>
     <table cellspacing="8" id="status_table">
       <tr>
@@ -144,8 +145,8 @@
       <canvas
         style="display: block; position: absolute; top: 0; left: 0"
         id="caption"
-        width="1920"
-        height="1080"
+        width="1650"
+        height="900"
       ></canvas>
       <canvas
         id="mosaic"
@@ -166,6 +167,7 @@
         "track/JB00000184_9_tracking.txt",
         "track/JB00000184_10_tracking.txt",
       ];
+      // const filePaths = ["track/Video_track_002.txt"];
 
       const fetchFiles = filePaths.map((filePath) =>
         fetch(filePath)
@@ -210,7 +212,29 @@
         const mouseY = e.clientY - rect.top;
         // console.log("mouseX", mouseX, "mouseY", mouseY);
         // console.log
-        worker.postMessage({ type: "rectMouseHover", mouseX, mouseY });
+        worker.postMessage({ type: "rectMouseMove", mouseX, mouseY });
+      });
+
+      captionCanvas.addEventListener("mousedown", (e) => {
+        const rect = captionCanvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        // console.log("mouseX", mouseX, "mouseY", mouseY);
+        // console.log
+        captionCanvas.style.cursor = "pointer";
+
+        worker.postMessage({ type: "rectMouseDown", mouseX, mouseY });
+      });
+
+      captionCanvas.addEventListener("mouseup", (e) => {
+        const rect = captionCanvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        // console.log("mouseX", mouseX, "mouseY", mouseY);
+        // console.log
+        captionCanvas.style.cursor = "default";
+
+        worker.postMessage({ type: "rectMouseUp", mouseX, mouseY });
       });
 
       // Status UI.
@@ -226,13 +250,13 @@
       function setStatus(message) {
         for (const key in message.data) {
           if (key === "hover") {
-            if (message.data[key]) {
-              captionCanvas.style.cursor = "pointer";
-            } else {
-              captionCanvas.style.cursor = "default";
-            }
+            // if (message.data[key]) {
+            //   captionCanvas.style.cursor = "pointer";
+            // } else {
+            //   captionCanvas.style.cursor = "default";
+            // }
           } else {
-            status[key].innerText = message.data[key];
+            status[key].innerText = message?.data?.[key] || "";
           }
         }
       }
@@ -244,7 +268,7 @@
         ).value;
         // const dataUri = `https://w3c.github.io/webcodecs/samples/data/bbb_video_${videoCodec}_frag.mp4`;
         // const dataUri = `./JB00000184.mp4`;
-        const dataUri = `http://127.0.0.1:3000/video`;
+        const dataUri = `http://127.0.0.1:3000/video/001`;
 
         const rendererName = document.querySelector(
           'input[name="renderer"]:checked'
@@ -262,7 +286,6 @@
           .transferControlToOffscreen();
 
         console.log("textCanvas", textCanvas);
-        // Fetch the file.
 
         Promise.all(fetchFiles)
           .then((filesContent) => {
@@ -290,27 +313,6 @@
           .catch((error) => {
             console.error("파일을 불러오는 중 오류 발생:", error);
           });
-
-        // fetch("track/JB00000184_1_tracking.txt")
-        //   .then((response) => response.text())
-        //   .then((data) => {
-        //     console.log("파일 내용:", data);
-        //     worker.addEventListener("message", setStatus);
-        //     worker.postMessage(
-        //       {
-        //         type: "start",
-        //         dataUri,
-        //         rendererName,
-        //         canvas,
-        //         textCanvas,
-        //         csvData: data,
-        //       },
-        //       [canvas, textCanvas]
-        //     );
-        //   })
-        //   .catch((error) => {
-        //     console.error("파일을 불러오는 중 오류 발생:", error);
-        //   });
       }
 
       function playVideo() {
@@ -336,6 +338,10 @@
         } else {
           worker.postMessage({ type: "seekForward" });
         }
+      }
+
+      function zoneSetting() {
+        worker.postMessage({ type: "zoneSetting" });
       }
     </script>
   </body>

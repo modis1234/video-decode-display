@@ -96,6 +96,7 @@ function start({ dataUri, rendererName, canvas, textCanvas, mosaicCanvas }) {
   // ✅ 비디오 디코더 생성
   createDecoder(); // 디코더 생성
 
+  // ✅ 렌더러 생성
   demuxer = new MP4Demuxer(dataUri, {
     onConfig(config) {
       setStatus(
@@ -139,7 +140,8 @@ function parseCSVToJson(csv) {
     });
   });
 
-  // console.log("result-->", result);
+  console.log("result.length-->", result.length);
+  console.log("result-->", result);
   renderer.setTrackData(result); // 트랙 데이터 설정
   // return result;
 }
@@ -154,7 +156,7 @@ function playFrames() {
 
   startTime = performance.now() - lastFrameTime / 1000;
 
-  function renderLoop() {
+  async function renderLoop() {
     if (!isPlaying || pendingChunks.length === 0) {
       isPlaying = false;
       return;
@@ -229,17 +231,28 @@ function rectClickAction(x, y) {
   }
 }
 
-function rectMouseHoverAction(x, y) {
-  const _isMouseArea = renderer?.handleHover(x, y) || false; // hover 상태 클릭 이벤트 처리
+function rectMouseMoveAction(x, y) {
+  const _isMouseArea = renderer?.handleMouseMove(x, y) || false; // hover 상태 클릭 이벤트 처리
   setStatus("hover", _isMouseArea); // hover 상태 업데이트
+}
+
+function rectMouseDownAction(x, y) {
+  renderer?.handleMouseDown(x, y); // mouse down 상태 클릭 이벤트 처리
+}
+function rectMouseUpAction(x, y) {
+  renderer?.handleMouseUp(x, y); // mouse up 상태 클릭 이벤트 처리
+}
+
+function zoneSettingAction() {
+  renderer?.zoneSetting(); // zone setting 상태 클릭 이벤트 처리
 }
 
 self.addEventListener("message", (message) => {
   const { type, ...data } = message.data;
-  // console.log("type->", type);
   if (type === "start") {
     const { csvData, ...rest } = data;
     videoData = rest;
+    console.log("videoData-->", rest);
     start(rest);
     parseCSVToJson(data.csvData);
   } else if (type === "play") playFrames();
@@ -250,6 +263,11 @@ self.addEventListener("message", (message) => {
   else if (type === "reset") seekTo(0); // WebCodecs 리셋
   else if (type === "rectClick")
     rectClickAction(data?.clickX, data?.clickY); // 클릭 이벤트 처리
-  else if (type === "rectMouseHover")
-    rectMouseHoverAction(data?.mouseX, data?.mouseY); // 마우스 호버 이벤트 처리
+  else if (type === "rectMouseMove")
+    rectMouseMoveAction(data?.mouseX, data?.mouseY); // 마우스 호버 이벤트 처리
+  else if (type === "rectMouseDown")
+    rectMouseDownAction(data?.mouseX, data?.mouseY); // 마우스 다운 이벤트 처리
+  else if (type === "rectMouseUp")
+    rectMouseUpAction(data?.mouseX, data?.mouseY); // 마우스 업 이벤트 처리
+  else if (type === "zoneSetting") zoneSettingAction();
 });

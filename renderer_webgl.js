@@ -9,6 +9,16 @@ class WebGLRenderer {
   #selectedItem = null; // 선택된 객체를 저장하는 변수
   #selectedItemIndexs = []; // 선택된 객체의 인덱스를 저장하는 배열
   #lastFrame = 0; // ◆️ 마지막 프레임 저장
+  #isDragging = false; // 드래그 상태를 나타내는 변수
+
+  /**DrawGBox */
+  #startPosX = null; // 드래그 시작 위치
+  #startPosY = null; // 드래그 시작 위치
+  #endPosX = null; // 드래그 끝 위치
+  #endPosY = null; // 드래그 끝 위치
+  #drawGBoxEnabled = false; // ← 드래그 박스 표시 여부 (드래그 완료 후에도 true 유지)
+
+  #zoneList = []; // 드래그 박스 리스트 (여러 개의 드래그 박스를 저장하기 위한 배열)
 
   static vertexShaderSource = `
     attribute vec2 xy;
@@ -36,7 +46,6 @@ class WebGLRenderer {
     console.log("this.#textCanvas->", this.#textCanvas);
 
     // ▼ Shader compile setup
-
     const vertexShader = gl.createShader(gl.VERTEX_SHADER);
     gl.shaderSource(vertexShader, WebGLRenderer.vertexShaderSource);
     gl.compileShader(vertexShader);
@@ -87,7 +96,9 @@ class WebGLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   }
-
+  getCanvas() {
+    return this.#canvas;
+  }
   // ◆️ Mosaic 처리 함수 (Canvas 2D)
   #applyMosaic(ctx, x, y, width, height, pixelSize) {
     const mosaicW = Math.max(1, Math.floor(width / pixelSize));
@@ -132,10 +143,10 @@ class WebGLRenderer {
           // _text = "Person";
         } else if (item.type === 2) {
           _color = "green";
-          _text = "person";
+          _text = "person" + item.index;
         } else if (item.type === 3) {
           _color = "yellow";
-          _text = "car";
+          _text = "car" + item.index;
         } else if (item.type === 4) {
           _color = "purple";
         } else if (item.type === 0) {
@@ -153,7 +164,6 @@ class WebGLRenderer {
 
         // ◆️ 선택된 항목 점선 표시
         if (_hasSelectedIndex) {
-          // console.log("Selected item:", item);
           ctx.setLineDash([6, 4]);
           ctx.strokeStyle = _color;
           ctx.lineWidth = 3;
@@ -164,6 +174,38 @@ class WebGLRenderer {
           ctx.lineWidth = 2;
           ctx.strokeRect(axisX1, axisY1, _width, _height);
         }
+      });
+    }
+
+    // ◆️ 드래그 박스 시각화
+    if (
+      // this.#drawGBoxEnabled &&
+      this.#startPosX !== null &&
+      this.#endPosX !== null
+    ) {
+      const drawX = this.#startPosX;
+      const drawY = this.#startPosY;
+      const drawW = this.#endPosX - this.#startPosX;
+      const drawH = this.#endPosY - this.#startPosY;
+      ctx.font = "20px Arial bold";
+      ctx.fillStyle = "blue";
+      ctx.fillText("Object", drawX, drawY - 5);
+
+      ctx.strokeStyle = "blue";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(drawX, drawY, drawW, drawH);
+      ctx.setLineDash([]);
+    }
+
+    // ◆️ 영역 박스 시각화
+    if (this.#zoneList.length > 0) {
+      this.#zoneList.forEach((zone) => {
+        ctx.strokeStyle = "blue"; // 영역 박스 색상
+        ctx.lineWidth = 3;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(zone.x, zone.y, zone.w, zone.h);
+        ctx.setLineDash([]);
       });
     }
 
@@ -192,8 +234,11 @@ class WebGLRenderer {
 
     this.#lastFrame = frame; // ◆️ 마지막 프레임 저장
 
-    const width = frame.displayWidth;
-    const height = frame.displayHeight;
+    // const width = frame.displayWidth;
+    // const height = frame.displayHeight;
+
+    const width = 1650;
+    const height = 900;
 
     this.#canvas.width = width;
     this.#canvas.height = height;
@@ -262,41 +307,18 @@ class WebGLRenderer {
 
   setTrackData(trackData) {
     this.#trackData = trackData;
-    console.log("trackData->", this.#trackData.length);
   }
   clear() {
     this.#textCanvas
       .getContext("2d")
       .clearRect(0, 0, this.#textCanvas.width, this.#textCanvas.height);
   }
-  redrawSelectedBox(x, y) {
+  redrawSelectedBox() {
     if (!this.#lastFrame || !this.#trackData) return;
-
     // Clear the text canvas before redrawing
     this.#textCanvas
       .getContext("2d")
       .clearRect(0, 0, this.#textCanvas.width, this.#textCanvas.height);
-
-    const width = this.#canvas.width;
-    const height = this.#canvas.height;
-    const target = this.#trackData.find((item) => {
-      const x1 = item.x1 * width;
-      const y1 = item.y1 * height;
-      const x2 = item.x2 * width;
-      const y2 = item.y2 * height;
-      return x >= x1 && x <= x2 && y >= y1 && y <= y2;
-    });
-
-    this.#selectedItem = target || null;
-
-    const _hasSelectedIndex = this.#selectedItemIndexs.includes(target?.index);
-    if (_hasSelectedIndex) {
-      this.#selectedItemIndexs = this.#selectedItemIndexs.filter(
-        (index) => index !== target?.index
-      );
-    } else {
-      this.#selectedItemIndexs.push(target?.index);
-    }
 
     this.#updateTextTexture(this.#lastFrame);
 
@@ -332,7 +354,7 @@ class WebGLRenderer {
         y <= y2
       );
     });
-    // console.log("target-->", target);
+
     this.#selectedItem = target || null;
     const _hasSelectedIndex = this.#selectedItemIndexs.includes(target?.index);
     if (_hasSelectedIndex) {
@@ -344,6 +366,7 @@ class WebGLRenderer {
     }
   }
   handlePauseClick(x, y) {
+    console.log("handlePauseClick-->", x, y);
     if (!this.#trackData) return;
     const width = this.#canvas.width;
     const height = this.#canvas.height;
@@ -375,12 +398,34 @@ class WebGLRenderer {
     } else {
       this.#selectedItemIndexs.push(target?.index);
     }
+
+    if (this.#startPosX !== null && this.#endPosX !== null) {
+    } // 드래그 박스가 있을 때는 드래그 박스에 대한 클릭 이벤트를 무시
+
     this.redrawSelectedBox(); // ◆️ 정지 상태에서도 점선 박스 갱신
   }
-  handleHover(x, y) {
+  handleMouseMove(x, y) {
     if (!this.#trackData) return false;
+
+    // x, y 좌표로 this.#selectedItem을 업데이트
+    if (this.#isDragging && this.#selectedItem) {
+      this.#selectedItem = {
+        ...this.#selectedItem,
+        customX: x,
+        customY: y,
+      };
+    }
+
     const width = this.#textCanvas.width;
     const height = this.#textCanvas.height;
+
+    if (this.#drawGBoxEnabled && this.#startPosX) {
+      this.#endPosX = x; // 드래그 끝 위치 저장
+      this.#endPosY = y; // 드래그 끝 위치 저장
+      this.redrawSelectedBox(); // 드래그 중인 박스 그리기
+    }
+
+    // 드래그 중이 아닐 때만 hover 체크
     return this.#trackData.some((item) => {
       const x1 = item.x1 * width;
       const y1 = item.y1 * height;
@@ -399,5 +444,69 @@ class WebGLRenderer {
         y <= y2
       );
     });
+  }
+  handleMouseDown(x, y) {
+    this.#isDragging = true; // 드래그 시작
+
+    const width = this.#textCanvas.width;
+    const height = this.#textCanvas.height;
+    const target = this.#trackData.find((item) => {
+      const x1 = item.x1 * width;
+      const y1 = item.y1 * height;
+      const x2 = item.x2 * width;
+      const y2 = item.y2 * height;
+
+      const _lastFrameTimestamp = this.#lastFrame.timestamp / 1_000_000 || 0;
+
+      const _itemTimestamp = item.timestamp || 0;
+
+      return (
+        _lastFrameTimestamp === _itemTimestamp &&
+        x >= x1 &&
+        x <= x2 &&
+        y >= y1 &&
+        y <= y2
+      );
+    });
+
+    this.#selectedItem = target || null;
+
+    if (!target) {
+      // clearDrawGBox(); // 드래그 박스 초기화
+      // mouse down 시점에 선택된 객체가 없을 때
+      this.#drawGBoxEnabled = true; // 시작하면 그리기 허용
+      this.#startPosX = x; // 드래그 시작 위치 저장
+      this.#startPosY = y; // 드래그 시작 위치 저장
+    }
+  }
+  handleMouseUp(x, y) {
+    this.#isDragging = false;
+
+    // 드래그 상태 초기화
+    this.#drawGBoxEnabled = false;
+    this.redrawSelectedBox();
+  }
+
+  clearDrawGBox() {
+    this.#drawGBoxEnabled = false;
+    this.#startPosX = null;
+    this.#startPosY = null;
+    this.#endPosX = null;
+    this.#endPosY = null;
+    this.redrawSelectedBox(); // 다시 그려서 박스 제거
+  }
+  zoneSetting() {
+    console.log("zoneSetting-->");
+    const _width = 500;
+    const _height = 500;
+
+    this.#zoneList.push({
+      x: 100,
+      y: 100,
+      w: _width,
+      h: _height,
+    });
+    console.log("this.#zoneList-->", this.#zoneList);
+    this.redrawSelectedBox();
   }
 }
