@@ -20,6 +20,10 @@ class WebGLRenderer {
 
   #zoneList = []; // 드래그 박스 리스트 (여러 개의 드래그 박스를 저장하기 위한 배열)
 
+  #resizeTarget = null;
+  #resizeDirection = null; // 'right', 'bottom', 'corner', etc.
+  #resizeThreshold = 10; // 테두리 감지 범위 (px)
+
   static vertexShaderSource = `
     attribute vec2 xy;
     varying highp vec2 uv;
@@ -432,33 +436,78 @@ class WebGLRenderer {
     const width = this.#textCanvas.width;
     const height = this.#textCanvas.height;
 
+    // 드래그 박스 그리기
     if (this.#drawGBoxEnabled && this.#startPosX) {
       this.#endPosX = x; // 드래그 끝 위치 저장
       this.#endPosY = y; // 드래그 끝 위치 저장
       this.redrawSelectedBox(); // 드래그 중인 박스 그리기
     }
 
-    // 선택 된 zone만 이동
+    // 선택된 zone 이동 (드래그)
     if (this.#isDragging && this.#startPosX !== null) {
       const dx = x - this.#startPosX;
       const dy = y - this.#startPosY;
 
-      // 선택된 zone만 이동
       this.#zoneList = this.#zoneList.map((zone) => {
-        if (zone.selected) {
-          return {
-            ...zone,
-            x: zone.x + dx,
-            y: zone.y + dy,
-          };
+        let updatedZone = { ...zone };
+
+        // zone 이동
+        if (zone.selected && !this.#resizeTarget) {
+          updatedZone.x += dx;
+          updatedZone.y += dy;
         }
-        return zone;
+
+        // zone 리사이즈
+        if (this.#resizeTarget && zone.id === this.#resizeTarget.id) {
+          if (
+            this.#resizeDirection === "right" ||
+            this.#resizeDirection === "corner"
+          ) {
+            updatedZone.w = Math.max(10, zone.w + dx); // 오른쪽
+          }
+          if (
+            this.#resizeDirection === "bottom" ||
+            this.#resizeDirection === "corner"
+          ) {
+            updatedZone.h = Math.max(10, zone.h + dy); // 아래쪽
+          }
+          if (this.#resizeDirection === "top") {
+            updatedZone.h = Math.max(10, zone.h - dy); // 위쪽
+            updatedZone.y = zone.y + dy; // 위치도 업데이트
+          }
+          if (this.#resizeDirection === "left") {
+            updatedZone.w = Math.max(10, zone.w - dx); // 왼쪽
+            updatedZone.x = zone.x + dx; // 위치도 업데이트
+          }
+
+          // 추가된 방향 리사이즈 처리
+          if (this.#resizeDirection === "top-left") {
+            updatedZone.w = Math.max(10, zone.w - dx); // 왼쪽
+            updatedZone.h = Math.max(10, zone.h - dy); // 위쪽
+            updatedZone.x = zone.x + dx; // 위치도 업데이트
+            updatedZone.y = zone.y + dy; // 위로 이동
+          }
+          if (this.#resizeDirection === "top-right") {
+            updatedZone.w = Math.max(10, zone.w + dx); // 오른쪽
+            updatedZone.h = Math.max(10, zone.h - dy); // 위쪽
+            updatedZone.y = zone.y + dy; // 위로 이동
+          }
+          if (this.#resizeDirection === "bottom-left") {
+            updatedZone.w = Math.max(10, zone.w - dx); // 왼쪽
+            updatedZone.h = Math.max(10, zone.h + dy); // 아래쪽
+            updatedZone.x = zone.x + dx; // 왼쪽으로 이동
+          }
+          if (this.#resizeDirection === "bottom-right") {
+            updatedZone.w = Math.max(10, zone.w + dx); // 오른쪽
+            updatedZone.h = Math.max(10, zone.h + dy); // 아래쪽
+          }
+        }
+
+        return updatedZone;
       });
 
-      // 현재 위치를 기준으로 다음 이동을 위해 갱신
       this.#startPosX = x;
       this.#startPosY = y;
-
       this.redrawSelectedBox();
     }
 
@@ -482,8 +531,19 @@ class WebGLRenderer {
       );
     });
   }
+
   handleMouseDown(x, y) {
     this.#isDragging = true; // 드래그 시작
+    this.#startPosX = x; // 드래그 시작 위치 저장
+    this.#startPosY = y; // 드래그 시작 위치 저장
+    const resizeTarget = this.#findResizeTarget(x, y);
+    if (resizeTarget) {
+      this.#resizeTarget = resizeTarget;
+      return;
+    }
+
+    // 아니면 일반 드래그
+    this.#resizeTarget = null;
 
     const width = this.#textCanvas.width;
     const height = this.#textCanvas.height;
@@ -518,6 +578,10 @@ class WebGLRenderer {
   }
   handleMouseUp(x, y) {
     this.#isDragging = false;
+    this.#resizeTarget = null;
+    this.#resizeDirection = null;
+    this.#startPosX = null;
+    this.#startPosY = null;
 
     // 드래그 상태 초기화
     this.#drawGBoxEnabled = false;
@@ -563,5 +627,111 @@ class WebGLRenderer {
       targetZone.selected = !targetZone.selected; // toggle
       this.redrawSelectedBox();
     }
+  }
+  #findResizeTarget(x, y) {
+    const margin = this.#resizeThreshold;
+    for (const zone of this.#zoneList) {
+      const x1 = zone.x;
+      const y1 = zone.y;
+      const x2 = zone.x + zone.w;
+      const y2 = zone.y + zone.h;
+
+      const nearLeft = Math.abs(x - x1) <= margin;
+      const nearRight = Math.abs(x - x2) <= margin;
+      const nearTop = Math.abs(y - y1) <= margin;
+      const nearBottom = Math.abs(y - y2) <= margin;
+
+      // 각 모서리
+      if (nearLeft && nearTop) {
+        this.#resizeTarget = zone;
+        this.#resizeDirection = "top-left";
+        return zone;
+      }
+      if (nearRight && nearTop) {
+        this.#resizeTarget = zone;
+        this.#resizeDirection = "top-right";
+        return zone;
+      }
+      if (nearLeft && nearBottom) {
+        this.#resizeTarget = zone;
+        this.#resizeDirection = "bottom-left";
+        return zone;
+      }
+      if (nearRight && nearBottom) {
+        this.#resizeTarget = zone;
+        this.#resizeDirection = "bottom-right";
+        return zone;
+      }
+
+      // 단일 엣지
+      if (nearLeft && y >= y1 && y <= y2) {
+        this.#resizeTarget = zone;
+        this.#resizeDirection = "left";
+        return zone;
+      }
+      if (nearRight && y >= y1 && y <= y2) {
+        this.#resizeTarget = zone;
+        this.#resizeDirection = "right";
+        return zone;
+      }
+      if (nearTop && x >= x1 && x <= x2) {
+        this.#resizeTarget = zone;
+        this.#resizeDirection = "top";
+        return zone;
+      }
+      if (nearBottom && x >= x1 && x <= x2) {
+        this.#resizeTarget = zone;
+        this.#resizeDirection = "bottom";
+        return zone;
+      }
+    }
+
+    this.#resizeTarget = null;
+    this.#resizeDirection = null;
+    return null;
+  }
+  getResizeCursor(x, y) {
+    const margin = this.#resizeThreshold;
+    for (const zone of this.#zoneList) {
+      const x1 = zone.x;
+      const y1 = zone.y;
+      const x2 = zone.x + zone.w;
+      const y2 = zone.y + zone.h;
+
+      const nearLeft = Math.abs(x - x1) <= margin;
+      const nearRight = Math.abs(x - x2) <= margin;
+      const nearTop = Math.abs(y - y1) <= margin;
+      const nearBottom = Math.abs(y - y2) <= margin;
+
+      // 각 모서리
+      if (nearLeft && nearTop) {
+        return "nwse-resize";
+      }
+      if (nearRight && nearTop) {
+        return "nesw-resize";
+      }
+      if (nearLeft && nearBottom) {
+        return "nesw-resize";
+      }
+      if (nearRight && nearBottom) {
+        return "nwse-resize";
+      }
+
+      // 단일 엣지
+      if (nearLeft) {
+        return "ew-resize";
+      }
+      if (nearRight) {
+        return "ew-resize";
+      }
+      if (nearTop) {
+        return "ns-resize";
+      }
+      if (nearBottom) {
+        return "ns-resize";
+      }
+    }
+
+    return "default";
   }
 }

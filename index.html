@@ -220,7 +220,7 @@
         const mouseY = e.clientY - rect.top;
         // console.log("mouseX", mouseX, "mouseY", mouseY);
         // console.log
-        captionCanvas.style.cursor = "pointer";
+        // captionCanvas.style.cursor = "pointer";
 
         worker.postMessage({ type: "rectMouseDown", mouseX, mouseY });
       });
@@ -248,12 +248,8 @@
 
       function setStatus(message) {
         for (const key in message.data) {
-          if (key === "hover") {
-            // if (message.data[key]) {
-            //   captionCanvas.style.cursor = "pointer";
-            // } else {
-            //   captionCanvas.style.cursor = "default";
-            // }
+          if (key === "getCursor") {
+            captionCanvas.style.cursor = message.data[key];
           } else {
             status[key].innerText = message?.data?.[key] || "";
           }

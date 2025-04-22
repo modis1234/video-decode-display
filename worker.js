@@ -233,7 +233,9 @@ function rectClickAction(x, y) {
 
 function rectMouseMoveAction(x, y) {
   const _isMouseArea = renderer?.handleMouseMove(x, y) || false; // hover 상태 클릭 이벤트 처리
-  setStatus("hover", _isMouseArea); // hover 상태 업데이트
+  const _getCursor = renderer?.getResizeCursor(x, y) || "default"; // hover 상태 클릭 이벤트 처리
+
+  setStatus("getCursor", _getCursor); // hover 상태 업데이트
 }
 
 function rectMouseDownAction(x, y) {
