@@ -201,7 +201,6 @@
         const rect = e.target.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
-        console.log("clickX", clickX, "clickY", clickY);
         // renderer.handleClick(clickX, clickY);
         worker.postMessage({ type: "rectClick", clickX, clickY });
       });

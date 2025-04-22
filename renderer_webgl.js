@@ -179,7 +179,7 @@ class WebGLRenderer {
 
     // ◆️ 드래그 박스 시각화
     if (
-      // this.#drawGBoxEnabled &&
+      this.#drawGBoxEnabled &&
       this.#startPosX !== null &&
       this.#endPosX !== null
     ) {
@@ -203,8 +203,11 @@ class WebGLRenderer {
       this.#zoneList.forEach((zone) => {
         ctx.strokeStyle = "blue"; // 영역 박스 색상
         ctx.lineWidth = 3;
-        ctx.setLineDash([4, 4]);
-        ctx.strokeRect(zone.x, zone.y, zone.w, zone.h);
+        if (zone.selected) ctx.setLineDash([4, 4]);
+
+        const _zoneX = zone.x;
+        const _zoneY = zone.y;
+        ctx.strokeRect(_zoneX, _zoneY, zone.w, zone.h);
         ctx.setLineDash([]);
       });
     }
@@ -399,8 +402,18 @@ class WebGLRenderer {
       this.#selectedItemIndexs.push(target?.index);
     }
 
-    if (this.#startPosX !== null && this.#endPosX !== null) {
-    } // 드래그 박스가 있을 때는 드래그 박스에 대한 클릭 이벤트를 무시
+    const updateZoneList = this.#zoneList.map((zone) => {
+      const x1 = zone.x;
+      const y1 = zone.y;
+      const x2 = zone.x + zone.w;
+      const y2 = zone.y + zone.h;
+
+      return {
+        ...zone,
+        selected: x >= x1 && x <= x2 && y >= y1 && y <= y2,
+      };
+    });
+    this.#zoneList = updateZoneList; // 선택된 zone만 이동
 
     this.redrawSelectedBox(); // ◆️ 정지 상태에서도 점선 박스 갱신
   }
@@ -423,6 +436,30 @@ class WebGLRenderer {
       this.#endPosX = x; // 드래그 끝 위치 저장
       this.#endPosY = y; // 드래그 끝 위치 저장
       this.redrawSelectedBox(); // 드래그 중인 박스 그리기
+    }
+
+    // 선택 된 zone만 이동
+    if (this.#isDragging && this.#startPosX !== null) {
+      const dx = x - this.#startPosX;
+      const dy = y - this.#startPosY;
+
+      // 선택된 zone만 이동
+      this.#zoneList = this.#zoneList.map((zone) => {
+        if (zone.selected) {
+          return {
+            ...zone,
+            x: zone.x + dx,
+            y: zone.y + dy,
+          };
+        }
+        return zone;
+      });
+
+      // 현재 위치를 기준으로 다음 이동을 위해 갱신
+      this.#startPosX = x;
+      this.#startPosY = y;
+
+      this.redrawSelectedBox();
     }
 
     // 드래그 중이 아닐 때만 hover 체크
@@ -474,7 +511,7 @@ class WebGLRenderer {
     if (!target) {
       // clearDrawGBox(); // 드래그 박스 초기화
       // mouse down 시점에 선택된 객체가 없을 때
-      this.#drawGBoxEnabled = true; // 시작하면 그리기 허용
+      // this.#drawGBoxEnabled = true; // 시작하면 그리기 허용
       this.#startPosX = x; // 드래그 시작 위치 저장
       this.#startPosY = y; // 드래그 시작 위치 저장
     }
@@ -500,13 +537,31 @@ class WebGLRenderer {
     const _width = 500;
     const _height = 500;
 
+    const _id = this.#zoneList.length + 1;
+
     this.#zoneList.push({
-      x: 100,
-      y: 100,
+      id: _id,
+      x: 100 + Math.random() * 100,
+      y: 100 + Math.random() * 100,
       w: _width,
       h: _height,
+      selected: false,
     });
     console.log("this.#zoneList-->", this.#zoneList);
     this.redrawSelectedBox();
+  }
+  handleClickZone(x, y) {
+    const targetZone = this.#zoneList.find((zone) => {
+      const x1 = zone.x;
+      const y1 = zone.y;
+      const x2 = zone.x + zone.w;
+      const y2 = zone.y + zone.h;
+      return x >= x1 && x <= x2 && y >= y1 && y <= y2;
+    });
+
+    if (targetZone) {
+      targetZone.selected = !targetZone.selected; // toggle
+      this.redrawSelectedBox();
+    }
   }
 }
