@@ -143,6 +143,31 @@ function parseCSVToJson(csv) {
   console.log("result.length-->", result.length);
   console.log("result-->", result);
   renderer.setTrackData(result); // 트랙 데이터 설정
+
+  const reduceList = result.reduce((acc, cur) => {
+    const { index, timestamp } = cur;
+    const diffTimestamp = timestamp.toFixed(1);
+
+    const hasTimestamp = acc?.[index]?.some(
+      (item) => item.timestamp.toFixed(1) === diffTimestamp
+    );
+    if (hasTimestamp) {
+      // console.log("hasTimestamp-z->", hasTimestamp);
+      return acc;
+    }
+    if (acc?.[index]) {
+      acc[index].push(cur);
+    } else {
+      acc = {
+        ...acc,
+        [index]: [cur],
+      };
+    }
+    return acc;
+  }, {});
+
+  setStatus("trackData", reduceList); // 트랙 데이터 설정
+
   // return result;
 }
 
@@ -249,6 +274,11 @@ function zoneSettingAction() {
   renderer?.zoneSetting(); // zone setting 상태 클릭 이벤트 처리
 }
 
+function setTextAction(text) {
+  console.log("text-->", text);
+  // renderer?.setText(text); // zone setting 상태 클릭 이벤트 처리
+}
+
 self.addEventListener("message", (message) => {
   const { type, ...data } = message.data;
   if (type === "start") {
@@ -271,5 +301,7 @@ self.addEventListener("message", (message) => {
     rectMouseDownAction(data?.mouseX, data?.mouseY); // 마우스 다운 이벤트 처리
   else if (type === "rectMouseUp")
     rectMouseUpAction(data?.mouseX, data?.mouseY); // 마우스 업 이벤트 처리
-  else if (type === "zoneSetting") zoneSettingAction();
+  else if (type === "zoneSetting")
+    zoneSettingAction(); // zone setting 이벤트 처리
+  else if (type === "setText") setTextAction(data?.text); // zone setting 이벤트 처리
 });
