@@ -424,6 +424,8 @@ class WebGLRenderer {
   handleMouseMove(x, y) {
     if (!this.#trackData) return false;
 
+    let shouldRedraw = false;
+
     // x, y 좌표로 this.#selectedItem을 업데이트
     if (this.#isDragging && this.#selectedItem) {
       this.#selectedItem = {
@@ -440,7 +442,8 @@ class WebGLRenderer {
     if (this.#drawGBoxEnabled && this.#startPosX) {
       this.#endPosX = x; // 드래그 끝 위치 저장
       this.#endPosY = y; // 드래그 끝 위치 저장
-      this.redrawSelectedBox(); // 드래그 중인 박스 그리기
+      shouldRedraw = true;
+      // this.redrawSelectedBox(); // 드래그 중인 박스 그리기
     }
 
     // 선택된 zone 이동 (드래그)
@@ -508,6 +511,11 @@ class WebGLRenderer {
 
       this.#startPosX = x;
       this.#startPosY = y;
+      // this.redrawSelectedBox();
+      shouldRedraw = true; // 드래그 중이면 다시 그려야 함
+    }
+
+    if (shouldRedraw) {
       this.redrawSelectedBox();
     }
 
