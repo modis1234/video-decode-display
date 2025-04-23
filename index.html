@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <link rel="stylesheet" href="style.css" />
+
     <title>WebCodec MP4 decode sample</title>
   </head>
   <body>
@@ -116,6 +118,8 @@
         disabled
       />
       <button onclick="zoneSetting()">영역 설정</button>
+
+      <button onclick="setText()">텍스트 추가</button>
     </div>
     <table cellspacing="8" id="status_table">
       <tr>
@@ -140,7 +144,10 @@
       </tr>
     </table>
 
-    <div class="video-container" style="position: relative">
+    <div
+      class="video-container"
+      style="position: relative; width: 1650px; height: 900px"
+    >
       <canvas style="object-fit: contain" id="video"></canvas>
       <canvas
         style="display: block; position: absolute; top: 0; left: 0"
@@ -153,21 +160,30 @@
         style="display: none; position: absolute; top: 0; left: 0"
       ></canvas>
     </div>
+    <div class="track-container">
+      <div id="track-box"></div>
+    </div>
 
     <script>
-      const filePaths = [
-        "track/JB00000184_1_tracking.txt",
-        "track/JB00000184_2_tracking.txt",
-        "track/JB00000184_3_tracking.txt",
-        "track/JB00000184_4_tracking.txt",
-        "track/JB00000184_5_tracking.txt",
-        "track/JB00000184_6_tracking.txt",
-        "track/JB00000184_7_tracking.txt",
-        "track/JB00000184_8_tracking.txt",
-        "track/JB00000184_9_tracking.txt",
-        "track/JB00000184_10_tracking.txt",
-      ];
-      // const filePaths = ["track/Video_track_002.txt"];
+      let isTextDragging = false;
+      let textOffsetX = 0;
+      let textOffsetY = 0;
+      // const videoTimestamp = 48.76; // 48.76초
+      const videoTimestamp = 53.52; // 53.52초
+
+      // const filePaths = [
+      //   "track/JB00000184_1_tracking.txt",
+      //   "track/JB00000184_2_tracking.txt",
+      //   "track/JB00000184_3_tracking.txt",
+      //   "track/JB00000184_4_tracking.txt",
+      //   "track/JB00000184_5_tracking.txt",
+      //   "track/JB00000184_6_tracking.txt",
+      //   "track/JB00000184_7_tracking.txt",
+      //   "track/JB00000184_8_tracking.txt",
+      //   "track/JB00000184_9_tracking.txt",
+      //   "track/JB00000184_10_tracking.txt",
+      // ];
+      const filePaths = ["track/Video_track_002.txt"];
 
       const fetchFiles = filePaths.map((filePath) =>
         fetch(filePath)
@@ -234,6 +250,7 @@
         captionCanvas.style.cursor = "default";
 
         worker.postMessage({ type: "rectMouseUp", mouseX, mouseY });
+        if (isTextDragging) isTextDragging = false;
       });
 
       // Status UI.
@@ -250,6 +267,9 @@
         for (const key in message.data) {
           if (key === "getCursor") {
             captionCanvas.style.cursor = message.data[key];
+          } else if (key === "trackData") {
+            // console.log("getTrackData--->>>>>", message.data[key]);
+            renderTrackData(message.data[key]);
           } else {
             status[key].innerText = message?.data?.[key] || "";
           }
@@ -263,7 +283,7 @@
         ).value;
         // const dataUri = `https://w3c.github.io/webcodecs/samples/data/bbb_video_${videoCodec}_frag.mp4`;
         // const dataUri = `./JB00000184.mp4`;
-        const dataUri = `http://127.0.0.1:3000/video/001`;
+        const dataUri = `http://127.0.0.1:3000/video/002`;
 
         const rendererName = document.querySelector(
           'input[name="renderer"]:checked'
@@ -337,6 +357,98 @@
 
       function zoneSetting() {
         worker.postMessage({ type: "zoneSetting" });
+      }
+
+      function setText() {
+        const _htmlInput = `<input
+        type="text"
+        class="textInput"
+        // id="textInput"
+        placeholder="텍스트를 입력하세요"
+        style="position:absolute;
+              font-size: 20px;
+              border: 3px solid #f00;
+              background: transparent;
+              font-weight: 600;
+              color: #f00;
+              z-index: 99;"
+        />`;
+
+        const _parentEl = document.querySelector(".video-container");
+        _parentEl.insertAdjacentHTML("beforeend", _htmlInput);
+
+        // 👇 DOM에 추가된 후에 이벤트 바인딩
+
+        const textInputEl = document.querySelector(".textInput");
+        textInputEl.style.top = "100px";
+        textInputEl.style.left = "100px";
+        textInputEl.addEventListener("change", (e) => {
+          const textInput = e.target.value;
+          console.log("textInput", textInput);
+
+          // worker.postMessage({ type: "setText", text: textInput });
+        });
+        textInputEl.addEventListener("mousedown", (e) => {
+          isTextDragging = true;
+          textOffsetX = e.clientX - textInputEl.offsetLeft;
+          textOffsetY = e.clientY - textInputEl.offsetTop;
+          // e.preventDefault(); // 드래그 중 텍스트 선택 방지
+        });
+        textInputEl.addEventListener("mousemove", (e) => {
+          if (!isTextDragging) return;
+          textInputEl.style.left = `${e.clientX - textOffsetX}px`;
+          textInputEl.style.top = `${e.clientY - textOffsetY}px`;
+        });
+        textInputEl.addEventListener("mouseup", (e) => {
+          isTextDragging = false;
+          // worker.postMessage({ type: "setTextClick", clickX, clickY });
+        });
+      }
+
+      function getType(type) {
+        let _type = "unknown";
+        switch (type) {
+          case 1:
+            // _type = "";
+            break;
+          case 2:
+            _type = "person";
+            break;
+          case 3:
+            _type = "car";
+            break;
+          case 4:
+            break;
+          case 0:
+            break;
+          default:
+            break;
+        }
+        return _type;
+      }
+
+      function renderTrackData(data) {
+        const trackRenderEl = document.querySelector("#track-box");
+        Object.keys(data).forEach((objectIndex) => {
+          let _html = `<div class="trackItems" id="index-${objectIndex}">`;
+          let _type = 0;
+          let _index = 0;
+          const indexList = data[objectIndex];
+          indexList.map((item, _idx) => {
+            const { timestamp, type, index } = item;
+            const _left = ((timestamp / videoTimestamp) * 100).toFixed(2); // 100px = 1s
+            _html += `<div class="trackItem" id="item-${objectIndex}-${timestamp}" style="left:${_left}%;"></div>`;
+            if (_idx === 0) {
+              _type = type;
+              _index = index;
+            }
+          });
+
+          _html += `<span class="trackType">${getType(
+            _type
+          )}-${_index}</span></div>`;
+          trackRenderEl.insertAdjacentHTML("beforeend", _html);
+        });
       }
     </script>
   </body>
