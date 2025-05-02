@@ -107,19 +107,23 @@
       <button disabled onclick="playbackRate(4)">x4</button>
       <button disabled onclick="playbackRate(8)">x8</button>
       <button disabled onclick="playbackRate(16)">x16</button>
+
+      <button onclick="zoneSetting()">영역 설정</button>
+
+      <button onclick="setText()">텍스트 추가</button>
+      <button onclick="toggleFullscreen()">Fullscreen</button>
+    </div>
+    <div class="timeline-container">
       <input
         type="range"
         id="seekBar"
         min="0"
-        max="100"
+        max="1"
         value="0"
-        step="1"
-        onchange="seek(this.value)"
-        disabled
+        step="0.01"
+        oninput="updateSeekBar(this.value)"
       />
-      <button onclick="zoneSetting()">영역 설정</button>
-
-      <button onclick="setText()">텍스트 추가</button>
+      <span id="currentTime">00:00</span>
     </div>
     <table cellspacing="8" id="status_table">
       <tr>
@@ -165,25 +169,47 @@
     </div>
 
     <script>
+      function throttle(callback, delay) {
+        let lastCall = 0;
+        return function (...args) {
+          const now = Date.now();
+          if (now - lastCall >= delay) {
+            lastCall = now;
+            callback.apply(this, args);
+          }
+        };
+      }
+
+      function debounce(callback, delay) {
+        let timeoutId;
+
+        return function (...args) {
+          clearTimeout(timeoutId); // 기존 타이머 제거
+          timeoutId = setTimeout(() => {
+            callback.apply(this, args); // delay 후 실행
+          }, delay);
+        };
+      }
+
       let isTextDragging = false;
       let textOffsetX = 0;
       let textOffsetY = 0;
-      // const videoTimestamp = 48.76; // 48.76초
-      const videoTimestamp = 53.52; // 53.52초
+      const videoTimestamp = 48.76; // 48.76초
+      // const videoTimestamp = 53.52; // 53.52초
 
-      // const filePaths = [
-      //   "track/JB00000184_1_tracking.txt",
-      //   "track/JB00000184_2_tracking.txt",
-      //   "track/JB00000184_3_tracking.txt",
-      //   "track/JB00000184_4_tracking.txt",
-      //   "track/JB00000184_5_tracking.txt",
-      //   "track/JB00000184_6_tracking.txt",
-      //   "track/JB00000184_7_tracking.txt",
-      //   "track/JB00000184_8_tracking.txt",
-      //   "track/JB00000184_9_tracking.txt",
-      //   "track/JB00000184_10_tracking.txt",
-      // ];
-      const filePaths = ["track/Video_track_002.txt"];
+      const filePaths = [
+        "track/JB00000184_1_tracking.txt",
+        "track/JB00000184_2_tracking.txt",
+        "track/JB00000184_3_tracking.txt",
+        "track/JB00000184_4_tracking.txt",
+        "track/JB00000184_5_tracking.txt",
+        "track/JB00000184_6_tracking.txt",
+        "track/JB00000184_7_tracking.txt",
+        "track/JB00000184_8_tracking.txt",
+        "track/JB00000184_9_tracking.txt",
+        "track/JB00000184_10_tracking.txt",
+      ];
+      // const filePaths = ["track/Video_track_002.txt"];
 
       const fetchFiles = filePaths.map((filePath) =>
         fetch(filePath)
@@ -203,7 +229,7 @@
         () => {
           document
             .querySelectorAll("input")
-            .forEach((input) => (input.disabled = true));
+            .forEach((input) => (input.disabled = false));
           // startButton.disabled = true;
           start();
         },
@@ -221,14 +247,14 @@
         worker.postMessage({ type: "rectClick", clickX, clickY });
       });
 
-      captionCanvas.addEventListener("mousemove", (e) => {
+      const throttledMouseMove = throttle((e) => {
         const rect = captionCanvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
-        // console.log("mouseX", mouseX, "mouseY", mouseY);
-        // console.log
         worker.postMessage({ type: "rectMouseMove", mouseX, mouseY });
-      });
+      }, 50); // 50ms마다 실행
+
+      captionCanvas.addEventListener("mousemove", throttledMouseMove);
 
       captionCanvas.addEventListener("mousedown", (e) => {
         const rect = captionCanvas.getBoundingClientRect();
@@ -270,6 +296,12 @@
           } else if (key === "trackData") {
             // console.log("getTrackData--->>>>>", message.data[key]);
             renderTrackData(message.data[key]);
+          } else if (key === "videoTime") {
+            console.log("videoTime--->>>>>", message.data[key]);
+            const seekBar = document.querySelector("#seekBar");
+            seekBar.value = message.data[key] / videoTimestamp;
+            const currentTime = document.querySelector("#currentTime");
+            currentTime.innerText = `${message.data[key].toFixed(2)}s`;
           } else {
             status[key].innerText = message?.data?.[key] || "";
           }
@@ -283,7 +315,7 @@
         ).value;
         // const dataUri = `https://w3c.github.io/webcodecs/samples/data/bbb_video_${videoCodec}_frag.mp4`;
         // const dataUri = `./JB00000184.mp4`;
-        const dataUri = `http://127.0.0.1:3000/video/002`;
+        const dataUri = `http://127.0.0.1:3000/video/001`;
 
         const rendererName = document.querySelector(
           'input[name="renderer"]:checked'
@@ -359,19 +391,25 @@
         worker.postMessage({ type: "zoneSetting" });
       }
 
+      function textInputChange(e) {
+        const textInput = e.target.value;
+        console.log("textInput", textInput);
+      }
+
       function setText() {
+        const _randomId = Math.random().toString(36).substring(2, 7);
         const _htmlInput = `<input
-        type="text"
-        class="textInput"
-        // id="textInput"
-        placeholder="텍스트를 입력하세요"
-        style="position:absolute;
-              font-size: 20px;
-              border: 3px solid #f00;
-              background: transparent;
-              font-weight: 600;
-              color: #f00;
-              z-index: 99;"
+          type="text"
+          class="textInput"
+          id="textInput-${_randomId}"
+          placeholder="텍스트를 입력하세요"
+          style="position:absolute;
+                font-size: 20px;
+                border: 3px solid #f00;
+                background: transparent;
+                font-weight: 600;
+                color: #f00;
+                z-index: 99;"
         />`;
 
         const _parentEl = document.querySelector(".video-container");
@@ -379,9 +417,12 @@
 
         // 👇 DOM에 추가된 후에 이벤트 바인딩
 
-        const textInputEl = document.querySelector(".textInput");
-        textInputEl.style.top = "100px";
-        textInputEl.style.left = "100px";
+        // const textInputEl = document.querySelector(".textInput");
+        const textInputEl = document.querySelector(`#textInput-${_randomId}`);
+
+        textInputEl.style.left = `${100 + Math.random() * 100}px`;
+        textInputEl.style.top = `${100 + Math.random() * 100}px`;
+
         textInputEl.addEventListener("change", (e) => {
           const textInput = e.target.value;
           console.log("textInput", textInput);
@@ -450,6 +491,47 @@
           trackRenderEl.insertAdjacentHTML("beforeend", _html);
         });
       }
+
+      // Seek bar control.
+      const updateSeekBar = debounce((value) => {
+        console.log("seekBar.value", seekBar.value);
+        console.log("seekAction", videoTimestamp * value);
+        const seekTime = (videoTimestamp * value).toFixed(2);
+        worker.postMessage({ type: "seekAction", seekTime });
+      }, 100);
+
+      // Fullscreen control.
+      function toggleFullscreen() {
+        const videoContainer = document.querySelector(".video-container");
+        if (videoContainer.requestFullscreen) {
+          videoContainer.requestFullscreen();
+        } else if (videoContainer.webkitRequestFullscreen) {
+          // Safari
+          videoContainer.webkitRequestFullscreen();
+        } else if (videoContainer.msRequestFullscreen) {
+          // IE11
+          videoContainer.msRequestFullscreen();
+        }
+      }
+
+      window.addEventListener("resize", () => {
+        const videoContainer = document.querySelector(".video-container");
+        if (document.fullscreenElement) {
+          worker.postMessage({
+            type: "resizeAction",
+            width: window.innerWidth,
+            height: window.screen.height,
+            isFullscreen: true,
+          });
+        } else {
+          worker.postMessage({
+            type: "resizeAction",
+            width: 1650,
+            height: 900,
+            isFullscreen: false,
+          });
+        }
+      });
     </script>
   </body>
 </html>

@@ -24,6 +24,10 @@ class WebGLRenderer {
   #resizeDirection = null; // 'right', 'bottom', 'corner', etc.
   #resizeThreshold = 10; // 테두리 감지 범위 (px)
 
+  #isFullscreen = false; // 전체화면 여부
+  #screenWidth = 0; // 전체화면 width
+  #screenHeight = 0; // 전체화면 height
+
   static vertexShaderSource = `
     attribute vec2 xy;
     varying highp vec2 uv;
@@ -243,9 +247,8 @@ class WebGLRenderer {
 
     // const width = frame.displayWidth;
     // const height = frame.displayHeight;
-
-    const width = 1650;
-    const height = 900;
+    const width = this.#isFullscreen ? this.#screenWidth : 1650;
+    const height = this.#isFullscreen ? this.#screenHeight : 900;
 
     this.#canvas.width = width;
     this.#canvas.height = height;
@@ -373,7 +376,6 @@ class WebGLRenderer {
     }
   }
   handlePauseClick(x, y) {
-    console.log("handlePauseClick-->", x, y);
     if (!this.#trackData) return;
     const width = this.#canvas.width;
     const height = this.#canvas.height;
@@ -741,5 +743,34 @@ class WebGLRenderer {
     }
 
     return "default";
+  }
+
+  resize(width, height, isFullscreen = false) {
+    this.#isFullscreen = isFullscreen; // 전체화면 여부 저장
+    this.#screenWidth = width; // 전체화면 width 저장
+    this.#screenHeight = height; // 전체화면 height 저장
+    console.log("resize-->", width, height, isFullscreen);
+    // 캔버스 크기 조정
+    this.#canvas.width = width;
+    this.#canvas.height = height;
+
+    if (this.#textCanvas) {
+      this.#textCanvas.width = width;
+      this.#textCanvas.height = height;
+    }
+
+    if (this.#mosaicCanvas) {
+      this.#mosaicCanvas.width = width;
+      this.#mosaicCanvas.height = height;
+    }
+
+    // WebGL Viewport 갱신
+    const gl = this.#ctx;
+    if (gl) {
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    }
+
+    // 박스나 텍스트 등 다시 그려야 하는 경우, 다시 그리기
+    this.redrawSelectedBox();
   }
 }

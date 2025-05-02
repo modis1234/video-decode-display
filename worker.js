@@ -14,8 +14,13 @@ function setStatus(type, message) {
     self.requestAnimationFrame(statusAnimationFrame);
   }
 }
+
 function statusAnimationFrame() {
-  self.postMessage(pendingStatus);
+  try {
+    self.postMessage(pendingStatus);
+  } catch (e) {
+    console.warn("⚠️ Failed to postMessage in Worker:", e);
+  }
   pendingStatus = null;
 }
 
@@ -37,7 +42,7 @@ let dataUri = null;
 let currentTimeStamp = 0; // 현재 시간 PTS
 let lastFrameTimeStamp = 0; // 마지막 프레임 시간 PTS
 
-let seekTime = 0; // 시간 이동
+let isFullscreen = false; // 전체 화면 여부
 
 // Decoder 초기화
 function createDecoder() {
@@ -59,6 +64,8 @@ function createDecoder() {
         frame.caption = `PTS: ${parseInt(frame.timestamp / 1_000_000)}초`;
 
         renderer.draw(frame);
+        frame.close();
+
         lastFrameTime = frame.timestamp;
         firstFrameRendered = true;
         setStatus("status", "First frame rendered. Click play to continue.");
@@ -191,13 +198,13 @@ function playFrames() {
     const elapsed = (now - startTime) / 1000; // 초 단위로 변환
     const frameTime = frame.timestamp / 1_000_000; // PTX(초 단위 변환)
     const adjustedFrameTime = frameTime / playbackSpeed; // 재생 속도 적용된 시간
-
     let delay = Math.max(16, (adjustedFrameTime - elapsed) * 1000); // 밀리초 변환- 최소 16ms 보장
     frame.caption = `PTS: ${parseInt(frame.timestamp / 1_000_000)}초`;
     frame.playbackSpeed = playbackSpeed;
     renderer.draw(frame);
     frame.close();
 
+    setStatus("videoTime", elapsed); // FPS 상태 업데이트
     timeoutId = setTimeout(() => {
       requestAnimationFrame(renderLoop);
       lastFrameTime = frame.timestamp;
@@ -236,16 +243,23 @@ function seekTo(timeInMs) {
   pendingChunks = [];
   firstFrameRendered = false;
 
-  const clampedTime = Math.max(
-    0,
-    Math.min(lastFrameTimeStamp, currentTimeStamp + timeInMs)
-  ); // 0과 lastFrameTimeStamp 사이의 값으로 클램핑
+  const clampedTime = Math.max(0, Math.min(lastFrameTimeStamp, timeInMs)); // 0과 lastFrameTimeStamp 사이의 값으로 클램핑
 
   currentTimeStamp = timeInMs === 0 ? 0 : clampedTime; // 밀리초 단위로 변환
-
   // 4. 시킹
   demuxer.seek(currentTimeStamp); // 마이크로초 단위로 변환
-  console.log("isPlaying->", isPlaying);
+}
+
+// fullScreen 설정
+function fullScreenAction(width, height) {
+  // if (isPlaying) {
+  //   pauseFrames(); // 일시 정지 상태로 변경
+  // }
+  console.log("fullScreenAction-->", isFullscreen);
+  renderer?.resize(width, height, isFullscreen);
+  // setTimeout(() => {
+  //   playFrames(); // 재생 상태로 변경
+  // }, 100); // 1초 후에 재생 시작
 }
 
 function rectClickAction(x, y) {
@@ -290,8 +304,10 @@ self.addEventListener("message", (message) => {
   } else if (type === "play") playFrames();
   else if (type === "pause") pauseFrames();
   else if (type === "playbackRate") setPlaybackSpeed(data?.rate || 1);
-  else if (type === "seekForward") seekTo(10); // 10초 앞으로 이동
-  else if (type === "seekBackward") seekTo(-10); // 10초 뒤로 이동
+  else if (type === "seekForward")
+    seekTo(currentTimeStamp + 10); // 10초 앞으로 이동
+  else if (type === "seekBackward")
+    seekTo(currentTimeStamp - 10); // 10초 뒤로 이동
   else if (type === "reset") seekTo(0); // WebCodecs 리셋
   else if (type === "rectClick")
     rectClickAction(data?.clickX, data?.clickY); // 클릭 이벤트 처리
@@ -303,5 +319,16 @@ self.addEventListener("message", (message) => {
     rectMouseUpAction(data?.mouseX, data?.mouseY); // 마우스 업 이벤트 처리
   else if (type === "zoneSetting")
     zoneSettingAction(); // zone setting 이벤트 처리
-  else if (type === "setText") setTextAction(data?.text); // zone setting 이벤트 처리
+  else if (type === "setText")
+    setTextAction(data?.text); // zone setting 이벤트 처리
+  else if (type === "seekAction") {
+    seekTime = data?.seekTime || 0; // seekTime 설정
+    seekTo(seekTime); // seekTo 호출
+  } else if (type === "resizeAction") {
+    console.log("resize-->", data);
+    isFullscreen = data?.isFullscreen || false; // 전체 화면 여부 설정
+    fullScreenAction(data.width, data.height); // fullScreenAction 호출
+  } else {
+    console.warn(`⚠️ Unknown message type received: ${type}`);
+  }
 });
