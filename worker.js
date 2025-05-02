@@ -244,10 +244,10 @@ function seekTo(timeInMs) {
   firstFrameRendered = false;
 
   const clampedTime = Math.max(0, Math.min(lastFrameTimeStamp, timeInMs)); // 0과 lastFrameTimeStamp 사이의 값으로 클램핑
-
   currentTimeStamp = timeInMs === 0 ? 0 : clampedTime; // 밀리초 단위로 변환
   // 4. 시킹
   demuxer.seek(currentTimeStamp); // 마이크로초 단위로 변환
+  setStatus("videoTime", currentTimeStamp); // 현재 시간 상태 업데이트
 }
 
 // fullScreen 설정
